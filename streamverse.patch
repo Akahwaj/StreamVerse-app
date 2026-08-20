@@ -1,0 +1,128 @@
+diff --git a/NOTICE.md b/NOTICE.md
+new file mode 100644
+index 0000000..0e5b805
+--- /dev/null
++++ b/NOTICE.md
+@@ -0,0 +1,10 @@
++# StreamVerse notices
++
++StreamVerse is a modified distribution based on NuvioTV.
++
++- Upstream project: https://github.com/NuvioMedia/NuvioTV
++- Upstream license: GNU General Public License, version 3.0
++- StreamVerse modifications: Copyright 2026 Adel Kahwaji
++
++The complete GPLv3 text is retained in [LICENSE](LICENSE). This modified
++version is distributed under the same GPLv3 license.
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index f976ac1..2a0c3b5 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -101,7 +101,7 @@ android {
+     ndkVersion = "29.0.14206865"
+ 
+     defaultConfig {
+-        applicationId = "com.nuvio.tv"
++        applicationId = "com.akahwaj.streamverse"
+         minSdk = 24
+         targetSdk = 36
+         versionCode = 1047
+@@ -144,8 +144,8 @@ android {
+         buildConfigField("String", "SENTRY_DSN", buildConfigString(sentryDsn))
+ 
+         // In-app updater (GitHub Releases)
+-        buildConfigField("String", "GITHUB_OWNER", "\"tapframe\"")
+-        buildConfigField("String", "GITHUB_REPO", "\"NuvioTV\"")
++        buildConfigField("String", "GITHUB_OWNER", "\"Akahwaj\"")
++        buildConfigField("String", "GITHUB_REPO", "\"StreamVerse-app\"")
+     }
+ 
+     flavorDimensions += "distribution"
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index c1c24f9..8b4cced 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -108,6 +108,14 @@
+ 
+                 <data android:scheme="stremio" />
+             </intent-filter>
++            <intent-filter>
++                <action android:name="android.intent.action.VIEW" />
++
++                <category android:name="android.intent.category.DEFAULT" />
++                <category android:name="android.intent.category.BROWSABLE" />
++
++                <data android:scheme="streamverse" />
++            </intent-filter>
+         </activity>
+ 
+         <profileable android:shell="true" />
+diff --git a/app/src/main/java/com/nuvio/tv/data/local/AppOnboardingDataStore.kt b/app/src/main/java/com/nuvio/tv/data/local/AppOnboardingDataStore.kt
+index 1469d80..3cb639d 100644
+--- a/app/src/main/java/com/nuvio/tv/data/local/AppOnboardingDataStore.kt
++++ b/app/src/main/java/com/nuvio/tv/data/local/AppOnboardingDataStore.kt
+@@ -27,7 +27,10 @@ class AppOnboardingDataStore @Inject constructor(
+     private val hasSeenAuthQrOnFirstLaunchKey = booleanPreferencesKey("has_seen_auth_qr_on_first_launch")
+ 
+     val hasSeenAuthQrOnFirstLaunch: Flow<Boolean> = dataStore.data.map { prefs ->
+-        prefs[hasSeenAuthQrOnFirstLaunchKey] ?: false
++        // StreamVerse is designed to work locally with the owner's own
++        // add-ons. Account linking remains optional in Settings, but a fresh
++        // Fire TV install must never be stopped by the QR account screen.
++        prefs[hasSeenAuthQrOnFirstLaunchKey] ?: true
+     }
+ 
+     suspend fun setHasSeenAuthQrOnFirstLaunch(value: Boolean) {
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index a5d0d38..ed43903 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -1,5 +1,5 @@
+ <resources>
+-    <string name="app_name">Nuvio</string>
++    <string name="app_name">StreamVerse</string>
+     <string name="tv_channel_continue_watching">Continue Watching</string>
+     <string name="type_movie">Movie</string>
+     <string name="type_movies">Movies</string>
+diff --git a/app/src/main/java/com/nuvio/tv/domain/model/ThemeAccess.kt b/app/src/main/java/com/nuvio/tv/domain/model/ThemeAccess.kt
+index f74c310..5304aa8 100644
+--- a/app/src/main/java/com/nuvio/tv/domain/model/ThemeAccess.kt
++++ b/app/src/main/java/com/nuvio/tv/domain/model/ThemeAccess.kt
+@@ -29,11 +29,11 @@ fun resolveAppTheme(
+             .filterValues(entitlements::includes)
+             .keys
+             .firstOrNull()
+-            ?: AppTheme.WHITE
++            ?: AppTheme.OCEAN
+     }
+     return if (selectedTheme in availableAppThemes(entitlements)) {
+         selectedTheme
+     } else {
+-        AppTheme.WHITE
++        AppTheme.OCEAN
+     }
+ }
+diff --git a/app/src/main/java/com/nuvio/tv/ui/theme/Theme.kt b/app/src/main/java/com/nuvio/tv/ui/theme/Theme.kt
+index 119f029..23b975e 100644
+--- a/app/src/main/java/com/nuvio/tv/ui/theme/Theme.kt
++++ b/app/src/main/java/com/nuvio/tv/ui/theme/Theme.kt
+@@ -40,7 +40,9 @@ val LocalNuvioExtendedColors = staticCompositionLocalOf {
+ 
+ val LocalNuvioTextStyles = staticCompositionLocalOf { NuvioTextStyles }
+ 
+-val LocalAppTheme = staticCompositionLocalOf { AppTheme.WHITE }
++// StreamVerse opens with the cinematic Ocean palette: near-black surfaces,
++// electric-blue primary actions, and a clearly visible D-pad focus ring.
++val LocalAppTheme = staticCompositionLocalOf { AppTheme.OCEAN }
+ 
+ val LocalSettingsUiStyle = staticCompositionLocalOf { SettingsUiStyle.CLASSIC }
+ 
+@@ -51,7 +53,7 @@ val LocalNuvioFocusRingStyle = staticCompositionLocalOf {
+ @OptIn(ExperimentalTvMaterial3Api::class)
+ @Composable
+ fun NuvioTheme(
+-    appTheme: AppTheme = AppTheme.WHITE,
++    appTheme: AppTheme = AppTheme.OCEAN,
+     appFont: AppFont = AppFont.INTER,
+     amoledMode: Boolean = false,
+     amoledSurfacesMode: Boolean = false,
