@@ -15,7 +15,7 @@ index 0000000..0e5b805
 +The complete GPLv3 text is retained in [LICENSE](LICENSE). This modified
 +version is distributed under the same GPLv3 license.
 diff --git a/app/build.gradle.kts b/app/build.gradle.kts
-index f976ac1..6f7ce19 100644
+index f976ac1..09e8c62 100644
 --- a/app/build.gradle.kts
 +++ b/app/build.gradle.kts
 @@ -101,7 +101,7 @@ android {
@@ -38,7 +38,18 @@ index f976ac1..6f7ce19 100644
      }
  
      flavorDimensions += "distribution"
-@@ -331,7 +331,12 @@ android {
+@@ -190,7 +190,9 @@ android {
+ 
+     buildTypes {
+         debug {
+-            signingConfig = signingConfigs.getByName("release")
++            // CI test builds must not depend on the upstream private release
++            // keystore. Release builds retain the configured release signing.
++            signingConfig = signingConfigs.getByName("debug")
+             isDebuggable = false
+             isMinifyEnabled = false
+ 
+@@ -331,7 +333,12 @@ android {
  androidComponents {
      onVariants(selector().withBuildType("debug")) { variant ->
          val isPlaystore = variant.productFlavors.any { it.second == "playstore" }
