@@ -15,7 +15,7 @@ index 0000000..0e5b805
 +The complete GPLv3 text is retained in [LICENSE](LICENSE). This modified
 +version is distributed under the same GPLv3 license.
 diff --git a/app/build.gradle.kts b/app/build.gradle.kts
-index f976ac1..2a0c3b5 100644
+index f976ac1..6f7ce19 100644
 --- a/app/build.gradle.kts
 +++ b/app/build.gradle.kts
 @@ -101,7 +101,7 @@ android {
@@ -38,6 +38,20 @@ index f976ac1..2a0c3b5 100644
      }
  
      flavorDimensions += "distribution"
+@@ -331,7 +331,12 @@ android {
+ androidComponents {
+     onVariants(selector().withBuildType("debug")) { variant ->
+         val isPlaystore = variant.productFlavors.any { it.second == "playstore" }
+-        variant.applicationId.set(if (isPlaystore) "com.nuvio.appdebug" else "com.nuviodebug.com")
++        // Keep a StreamVerse package ID for debug APKs as well. This prevents
++        // a debug install from being mistaken for the upstream Nuvio app.
++        variant.applicationId.set(
++            if (isPlaystore) "com.akahwaj.streamverse.playstore.debug"
++            else "com.akahwaj.streamverse.debug"
++        )
+     }
+ }
+ 
 diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
 index c1c24f9..8b4cced 100644
 --- a/app/src/main/AndroidManifest.xml
@@ -73,17 +87,6 @@ index 1469d80..3cb639d 100644
      }
  
      suspend fun setHasSeenAuthQrOnFirstLaunch(value: Boolean) {
-diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
-index a5d0d38..ed43903 100644
---- a/app/src/main/res/values/strings.xml
-+++ b/app/src/main/res/values/strings.xml
-@@ -1,5 +1,5 @@
- <resources>
--    <string name="app_name">Nuvio</string>
-+    <string name="app_name">StreamVerse</string>
-     <string name="tv_channel_continue_watching">Continue Watching</string>
-     <string name="type_movie">Movie</string>
-     <string name="type_movies">Movies</string>
 diff --git a/app/src/main/java/com/nuvio/tv/domain/model/ThemeAccess.kt b/app/src/main/java/com/nuvio/tv/domain/model/ThemeAccess.kt
 index f74c310..5304aa8 100644
 --- a/app/src/main/java/com/nuvio/tv/domain/model/ThemeAccess.kt
@@ -126,3 +129,14 @@ index 119f029..23b975e 100644
      appFont: AppFont = AppFont.INTER,
      amoledMode: Boolean = false,
      amoledSurfacesMode: Boolean = false,
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index a5d0d38..ed43903 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -1,5 +1,5 @@
+ <resources>
+-    <string name="app_name">Nuvio</string>
++    <string name="app_name">StreamVerse</string>
+     <string name="tv_channel_continue_watching">Continue Watching</string>
+     <string name="type_movie">Movie</string>
+     <string name="type_movies">Movies</string>
