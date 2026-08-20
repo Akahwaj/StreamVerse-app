@@ -84,3 +84,45 @@ index a5d0d38..ed43903 100644
      <string name="tv_channel_continue_watching">Continue Watching</string>
      <string name="type_movie">Movie</string>
      <string name="type_movies">Movies</string>
+diff --git a/app/src/main/java/com/nuvio/tv/domain/model/ThemeAccess.kt b/app/src/main/java/com/nuvio/tv/domain/model/ThemeAccess.kt
+index f74c310..5304aa8 100644
+--- a/app/src/main/java/com/nuvio/tv/domain/model/ThemeAccess.kt
++++ b/app/src/main/java/com/nuvio/tv/domain/model/ThemeAccess.kt
+@@ -29,11 +29,11 @@ fun resolveAppTheme(
+             .filterValues(entitlements::includes)
+             .keys
+             .firstOrNull()
+-            ?: AppTheme.WHITE
++            ?: AppTheme.OCEAN
+     }
+     return if (selectedTheme in availableAppThemes(entitlements)) {
+         selectedTheme
+     } else {
+-        AppTheme.WHITE
++        AppTheme.OCEAN
+     }
+ }
+diff --git a/app/src/main/java/com/nuvio/tv/ui/theme/Theme.kt b/app/src/main/java/com/nuvio/tv/ui/theme/Theme.kt
+index 119f029..23b975e 100644
+--- a/app/src/main/java/com/nuvio/tv/ui/theme/Theme.kt
++++ b/app/src/main/java/com/nuvio/tv/ui/theme/Theme.kt
+@@ -40,7 +40,9 @@ val LocalNuvioExtendedColors = staticCompositionLocalOf {
+ 
+ val LocalNuvioTextStyles = staticCompositionLocalOf { NuvioTextStyles }
+ 
+-val LocalAppTheme = staticCompositionLocalOf { AppTheme.WHITE }
++// StreamVerse opens with the cinematic Ocean palette: near-black surfaces,
++// electric-blue primary actions, and a clearly visible D-pad focus ring.
++val LocalAppTheme = staticCompositionLocalOf { AppTheme.OCEAN }
+ 
+ val LocalSettingsUiStyle = staticCompositionLocalOf { SettingsUiStyle.CLASSIC }
+ 
+@@ -51,7 +53,7 @@ val LocalNuvioFocusRingStyle = staticCompositionLocalOf {
+ @OptIn(ExperimentalTvMaterial3Api::class)
+ @Composable
+ fun NuvioTheme(
+-    appTheme: AppTheme = AppTheme.WHITE,
++    appTheme: AppTheme = AppTheme.OCEAN,
+     appFont: AppFont = AppFont.INTER,
+     amoledMode: Boolean = false,
+     amoledSurfacesMode: Boolean = false,
