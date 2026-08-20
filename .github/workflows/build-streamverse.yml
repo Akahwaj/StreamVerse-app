@@ -24,6 +24,8 @@ jobs:
         run: git -C nuvio-tv apply ../streamverse.patch
       - name: Build universal debug APK
         working-directory: nuvio-tv
+        env:
+          CI_USE_DEBUG_SIGNING: "true"
         run: ./gradlew :app:assembleFullDebug --stacktrace
       - name: Upload Fire TV APK
         uses: actions/upload-artifact@v4
