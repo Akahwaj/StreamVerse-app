@@ -63,7 +63,7 @@ if command -v aapt2 &>/dev/null; then
     fail "Leanback feature not declared (required for Fire TV)"
   fi
 else
-  echo "::warning::aapt2 not found; skipping badging checks"
+  fail "aapt2 not found; badging checks (package name, ABI, leanback) could not run"
 fi
 
 # --- aapt manifest dump --------------------------------------------------
@@ -80,7 +80,7 @@ if command -v apksigner &>/dev/null; then
     fail "APK does not appear to be signed"
   fi
 else
-  echo "::warning::apksigner not found; skipping signature check"
+  fail "apksigner not found; signature check could not run"
 fi
 
 # --- Result --------------------------------------------------------------
