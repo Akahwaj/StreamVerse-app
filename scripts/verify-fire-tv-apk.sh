@@ -110,6 +110,8 @@ import xml.etree.ElementTree as ET
 
 ANDROID = "{http://schemas.android.com/apk/res/android}"
 root = ET.parse(sys.argv[1]).getroot()
+uses_sdk = root.find("uses-sdk")
+min_sdk = uses_sdk.get(ANDROID + "minSdkVersion", "") if uses_sdk is not None else ""
 app = root.find("application")
 if app is None:
     print("launcher_activity=")
@@ -156,6 +158,7 @@ print(f"launcher_exported={'true' if launcher_exported else 'false'}")
 print(f"banner={banner}")
 print(f"leanback_feature={'true' if leanback_feature else 'false'}")
 print(f"touchscreen_not_required={'true' if touchscreen_not_required else 'false'}")
+print(f"min_sdk={min_sdk}")
 PY
 
   launcher=$(sed -n 's/^launcher_activity=//p' "$MANIFEST_CHECK_FILE")
@@ -163,6 +166,7 @@ PY
   banner=$(sed -n 's/^banner=//p' "$MANIFEST_CHECK_FILE")
   leanback_feature=$(sed -n 's/^leanback_feature=//p' "$MANIFEST_CHECK_FILE")
   touchscreen_not_required=$(sed -n 's/^touchscreen_not_required=//p' "$MANIFEST_CHECK_FILE")
+  min_sdk=$(sed -n 's/^min_sdk=//p' "$MANIFEST_CHECK_FILE")
 
   [[ -n "$launcher" ]]     && pass "Leanback launcher activity resolves: $launcher"     || fail "No MAIN + LEANBACK_LAUNCHER activity found"
   [[ "$launcher_exported" == "true" ]]     && pass "Leanback launcher activity is exported"     || fail "Leanback launcher activity is not exported"
