@@ -8,6 +8,9 @@ StreamVerse is a personal Android TV and Fire TV media hub with a cinematic, rem
 - Poster rows for Movies, TV Shows, Anime, Continue Watching, and custom collections
 - Stremio-compatible add-on support
 - User-installable community manifests and compatible open-source GitHub plugin repositories
+- TMDB movie/TV discovery, lists, collections, artwork, companies, and network catalogs
+- IMDb IDs and ratings, with MDBList aggregation for IMDb, TMDB, Rotten Tomatoes, Metacritic, Letterboxd, Trakt, and MyAnimeList ratings
+- Trakt and Simkl account tracking, library/history synchronization, public lists, and playback scrobbling
 - Add, reorder, rename, hide, or remove catalog rows from the TV app
 - HLS/M3U live-stream playback and Android TV EPG integration
 - Phone-accessible web tools for add-ons, repositories, stream badges, and debrid formatting
@@ -17,7 +20,7 @@ StreamVerse is a personal Android TV and Fire TV media hub with a cinematic, rem
 
 ## Build
 
-GitHub Actions fetches a pinned GPLv3 upstream source revision, applies the StreamVerse patch, audits the native UI, embedded web tools, HLS/M3U playback, EPG declarations, and updater modules, then builds and verifies one ARM64 Fire TV APK.
+GitHub Actions fetches a pinned GPLv3 upstream source revision, applies the StreamVerse patch, audits the native UI, embedded web tools, TMDB/IMDb/MDBList catalogs and ratings, Trakt/Simkl tracking, HLS/M3U playback, EPG declarations, and updater modules, then builds and verifies one ARM64 Fire TV APK.
 
 Regular branch and pull-request builds are CI-signed test artifacts. A `vX.Y.Z` tag requires the repository's stable StreamVerse signing secrets, publishes one verified APK to GitHub Releases, and supplies the release used by the in-app updater. The signing key must remain identical across releases or Android will reject the update.
 
@@ -27,7 +30,7 @@ See [Actions](https://github.com/Akahwaj/StreamVerse-app/actions) for build prog
 
 ## Privacy and setup
 
-Your add-on URLs, playlists, provider credentials, and API keys are personal configuration. They are not committed to this public repository. Add them on your own device or through the companion transfer flow.
+Your add-on URLs, playlists, provider credentials, and API keys are personal configuration. They are not committed to this public repository. Add them on your own device or through the companion transfer flow. Ratings from Rotten Tomatoes and the other MDBList providers use the user's authorized MDBList API access; StreamVerse does not scrape provider websites.
 
 ## License
 

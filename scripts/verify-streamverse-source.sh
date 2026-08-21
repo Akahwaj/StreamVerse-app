@@ -117,6 +117,43 @@ require_file "app/src/main/java/com/nuvio/tv/core/server/RepositoryWebPage.kt" "
 require_file "app/src/main/java/com/nuvio/tv/ui/screens/plugin/PluginScreen.kt" "Nuvio plugin manager UI"
 require_match "app/build.gradle.kts" 'FEATURE_PLUGINS_ENABLED.*true' "Nuvio/local plugins are enabled in the full flavor"
 
+# Catalog, metadata, ratings, and tracking compatibility. Provider secrets stay
+# out of the APK/repository and are supplied by the user or release environment.
+# Rotten Tomatoes, Metacritic, Letterboxd, and MAL ratings are obtained through
+# the authorized MDBList integration rather than by scraping provider sites.
+require_file "app/src/main/java/com/nuvio/tv/data/remote/api/TmdbApi.kt" "TMDB movie and TV API"
+require_file "app/src/main/java/com/nuvio/tv/core/tmdb/TmdbMetadataService.kt" "TMDB metadata and artwork enrichment"
+require_file "app/src/main/java/com/nuvio/tv/core/tmdb/TmdbCollectionSourceResolver.kt" "TMDB lists, collections, discovery, companies, and networks"
+require_file "app/src/main/java/com/nuvio/tv/ui/screens/tmdb/TmdbEntityBrowseScreen.kt" "TMDB catalog browser UI"
+require_file "app/src/main/java/com/nuvio/tv/ui/screens/settings/TmdbSettingsScreen.kt" "TMDB settings UI"
+require_match "app/build.gradle.kts" 'TMDB_API_KEY' "TMDB API configuration is compiled"
+
+require_file "app/src/main/java/com/nuvio/tv/data/repository/ImdbEpisodeRatingsRepository.kt" "IMDb episode ratings repository"
+require_file "app/src/main/java/com/nuvio/tv/ui/components/ImdbRatingSourceLabel.kt" "IMDb rating attribution UI"
+require_match "app/src/full/java/com/nuvio/tv/core/build/AppFeaturePolicy.kt" 'imdbRatingLogoEnabled.*true' "IMDb rating attribution is enabled in the full flavor"
+
+require_file "app/src/main/java/com/nuvio/tv/data/remote/api/MDBListApi.kt" "MDBList ratings API"
+require_file "app/src/main/java/com/nuvio/tv/data/repository/MDBListRepository.kt" "MDBList ratings aggregator"
+require_file "app/src/main/java/com/nuvio/tv/data/local/MDBListSettingsDataStore.kt" "MDBList private settings storage"
+require_file "app/src/main/java/com/nuvio/tv/ui/screens/settings/MDBListSettingsScreen.kt" "MDBList settings UI"
+for provider in TRAKT IMDB TMDB LETTERBOXD TOMATOES AUDIENCE METACRITIC MAL; do
+  require_match "app/src/main/java/com/nuvio/tv/data/repository/MDBListRepository.kt" "${provider}\\(" "MDBList ${provider} rating source is mapped"
+done
+
+require_file "app/src/main/java/com/nuvio/tv/data/repository/TraktTrackingProvider.kt" "Trakt tracking provider"
+require_file "app/src/main/java/com/nuvio/tv/data/repository/TraktTrackingScrobbler.kt" "Trakt playback scrobbling"
+require_file "app/src/main/java/com/nuvio/tv/core/trakt/TraktPublicListSourceResolver.kt" "Trakt public-list catalogs"
+require_file "app/src/main/java/com/nuvio/tv/ui/screens/settings/TraktViewModel.kt" "Trakt account settings"
+require_match "app/build.gradle.kts" 'TRAKT_CLIENT_ID' "Trakt OAuth configuration is compiled"
+
+require_file "app/src/main/java/com/nuvio/tv/data/simkl/SimklTrackingProvider.kt" "Simkl tracking provider"
+require_file "app/src/main/java/com/nuvio/tv/data/simkl/SimklSyncEngine.kt" "Simkl library and history synchronization"
+require_file "app/src/main/java/com/nuvio/tv/data/simkl/SimklMutationService.kt" "Simkl watch-state updates"
+require_file "app/src/main/java/com/nuvio/tv/ui/screens/settings/SimklSettingsViewModel.kt" "Simkl account settings"
+require_match "app/build.gradle.kts" 'SIMKL_CLIENT_ID' "Simkl OAuth configuration is compiled"
+
+require_match "app/src/main/java/com/nuvio/tv/data/remote/dto/AddonManifestDto.kt" 'catalogs' "Community add-on movie, series, anime, and Live TV catalogs are manifest-driven"
+
 # Live playback compatibility. This validates HLS/M3U playback and Android TV
 # EPG integration; it does not claim a standalone XMLTV/Xtream library manager.
 require_file "app/src/main/java/com/nuvio/tv/ui/screens/stream/StreamScreen.kt" "Stream selection screen"

@@ -72,7 +72,7 @@ env:
 
 jobs:
   build-validate-package:
-    name: Native UI, web tools, Live TV, updater, and APK
+    name: UI, catalogs, tracking, Live TV, updater, and APK
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -197,7 +197,7 @@ jobs:
           grep -Fxq "        versionCode = $STREAMVERSE_VERSION_CODE" source/app/build.gradle.kts
           grep -Fxq "        versionName = \"$STREAMVERSE_VERSION_NAME\"" source/app/build.gradle.kts
 
-      - name: Audit UI, web tools, Live TV, and updater source
+      - name: Audit UI, catalogs, tracking, Live TV, and updater source
         shell: bash
         run: |
           set -euo pipefail
