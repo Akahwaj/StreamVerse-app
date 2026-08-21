@@ -2,7 +2,13 @@ name: Build and validate Fire TV APK
 
 on:
   push:
-    branches: [main, fix/fire-tv-arm64-a-to-z]
+    branches: [main, copilot/update-streaming-logic, fix/fire-tv-arm64-a-to-z]
+    paths:
+      - ".github/workflows/build-streamverse.yml"
+      - "streamverse.patch"
+      - "scripts/verify-fire-tv-apk.sh"
+  pull_request:
+    branches: [main]
     paths:
       - ".github/workflows/build-streamverse.yml"
       - "streamverse.patch"
@@ -19,7 +25,7 @@ on:
         type: string
         default: b95c899af04189f97284d3c91cb2c478fafc9c04
       patch_path:
-        description: Optional patch path in the calling repository
+        description: Optional repository-relative patch path
         type: string
         default: streamverse.patch
       gradle_task:
@@ -35,11 +41,11 @@ on:
         type: string
         default: com.akahwaj.streamverse
       min_mib:
-        description: Minimum plausible APK size in MiB
+        description: Minimum plausible APK size in whole MiB
         type: number
         default: 40
       max_mib:
-        description: Maximum plausible APK size in MiB
+        description: Maximum plausible APK size in whole MiB
         type: number
         default: 180
       artifact_name:
@@ -98,12 +104,18 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
-      - name: Apply project customization
+      - name: Validate and apply project customization
         shell: bash
         run: |
           set -euo pipefail
           if [[ -n "$PATCH_PATH" ]]; then
-            patch_file="$GITHUB_WORKSPACE/orchestrator/$PATCH_PATH"
+            [[ "$PATCH_PATH" != /* ]] || { echo "::error::Patch path must be repository-relative"; exit 1; }
+            patch_file=$(realpath -m "$GITHUB_WORKSPACE/orchestrator/$PATCH_PATH")
+            orchestrator_root=$(realpath "$GITHUB_WORKSPACE/orchestrator")
+            [[ "$patch_file" == "$orchestrator_root/"* ]] || {
+              echo "::error::Patch path escapes the workflow repository"
+              exit 1
+            }
             [[ -f "$patch_file" ]] || { echo "::error::Patch not found: $PATCH_PATH"; exit 1; }
             git -C source apply --check "$patch_file"
             git -C source apply "$patch_file"
@@ -119,13 +131,12 @@ jobs:
           chmod +x ./gradlew
           ./gradlew "$GRADLE_TASK" --stacktrace
 
-      - name: Select exactly one device APK
+      - name: Select exactly one standalone ARM64 APK
         shell: bash
         run: |
           set -euo pipefail
           mapfile -t matches < <(
-            find source/app/build/outputs/apk -type f \
-              -name "*${EXPECTED_ABI}*.apk" ! -name "*universal*" | sort
+            find source/app/build/outputs/apk -type f               -name "*${EXPECTED_ABI}*.apk" ! -name "*universal*" | sort
           )
           if [[ ${#matches[@]} -ne 1 ]]; then
             printf '::error::Expected exactly one %s APK; found %s\n' "$EXPECTED_ABI" "${#matches[@]}"
@@ -136,12 +147,11 @@ jobs:
           cp "${matches[0]}" "dist/${ARTIFACT_NAME}.apk"
           printf 'APK_PATH=%s\n' "$GITHUB_WORKSPACE/dist/${ARTIFACT_NAME}.apk" >> "$GITHUB_ENV"
 
-      - name: Verify APK acceptance gate
+      - name: Verify exact Fire TV APK
         shell: bash
         run: |
           set -euo pipefail
-          bash orchestrator/scripts/verify-fire-tv-apk.sh \
-            "$APK_PATH" "$EXPECTED_ABI" "$EXPECTED_PACKAGE" "$MIN_MIB" "$MAX_MIB"
+          bash orchestrator/scripts/verify-fire-tv-apk.sh             "$APK_PATH" "$EXPECTED_ABI" "$EXPECTED_PACKAGE" "$MIN_MIB" "$MAX_MIB"
 
       - name: Publish verification summary
         if: always()
@@ -157,7 +167,7 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload one installable Fire TV APK
+      - name: Upload one verified Fire TV APK
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_NAME }}
@@ -175,6 +185,7 @@ jobs:
             apk-verification-summary.txt
             apk-signature.txt
             apk-badging.txt
-            apk-manifest-tree.txt
+            apk-manifest.xml
+            apk-manifest-checks.txt
           if-no-files-found: ignore
           retention-days: 14
