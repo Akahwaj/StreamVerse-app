@@ -20,7 +20,7 @@ index f976ac1..09e8c62 100644
 +++ b/app/build.gradle.kts
 @@ -101,7 +101,7 @@ android {
      ndkVersion = "29.0.14206865"
- 
+
      defaultConfig {
 -        applicationId = "com.nuvio.tv"
 +        applicationId = "com.akahwaj.streamverse"
@@ -29,17 +29,17 @@ index f976ac1..09e8c62 100644
          versionCode = 1047
 @@ -144,8 +144,8 @@ android {
          buildConfigField("String", "SENTRY_DSN", buildConfigString(sentryDsn))
- 
+
          // In-app updater (GitHub Releases)
 -        buildConfigField("String", "GITHUB_OWNER", "\"tapframe\"")
 -        buildConfigField("String", "GITHUB_REPO", "\"NuvioTV\"")
 +        buildConfigField("String", "GITHUB_OWNER", "\"Akahwaj\"")
 +        buildConfigField("String", "GITHUB_REPO", "\"StreamVerse-app\"")
      }
- 
+
      flavorDimensions += "distribution"
 @@ -190,7 +190,9 @@ android {
- 
+
      buildTypes {
          debug {
 -            signingConfig = signingConfigs.getByName("release")
@@ -48,7 +48,7 @@ index f976ac1..09e8c62 100644
 +            signingConfig = signingConfigs.getByName("debug")
              isDebuggable = false
              isMinifyEnabled = false
- 
+
 @@ -331,7 +333,12 @@ android {
  androidComponents {
      onVariants(selector().withBuildType("debug")) { variant ->
@@ -62,13 +62,13 @@ index f976ac1..09e8c62 100644
 +        )
      }
  }
- 
+
 diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
 index c1c24f9..8b4cced 100644
 --- a/app/src/main/AndroidManifest.xml
 +++ b/app/src/main/AndroidManifest.xml
 @@ -108,6 +108,14 @@
- 
+
                  <data android:scheme="stremio" />
              </intent-filter>
 +            <intent-filter>
@@ -80,15 +80,210 @@ index c1c24f9..8b4cced 100644
 +                <data android:scheme="streamverse" />
 +            </intent-filter>
          </activity>
- 
+
          <profileable android:shell="true" />
+diff --git a/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt b/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt
+index ec8fb58..81bb354 100644
+--- a/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt
++++ b/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt
+@@ -88,6 +88,18 @@ ${tabButtons}
+       <div class="add-error" id="addError"></div>
+     </div>
+
++    <div class="community-directory">
++      <div class="section-label">${context.getString(R.string.web_community_addons)}</div>
++      <p class="community-description">${context.getString(R.string.web_community_addons_description)}</p>
++      <div class="add-row">
++        <input type="search" id="communitySearch" value="Streaming Catalogs" placeholder="${context.getString(R.string.web_community_search_placeholder)}" autocomplete="off" autocapitalize="off" spellcheck="false">
++        <button class="btn" type="button" onclick="loadCommunityAddons()">${context.getString(R.string.web_community_browse)}</button>
++      </div>
++      <div class="community-status" id="communityStatus"></div>
++      <ul class="addon-list" id="communityAddonList"></ul>
++      <a class="community-attribution" href="https://stremio-addons.net/" target="_blank" rel="noopener noreferrer">${context.getString(R.string.web_community_attribution)}</a>
++    </div>
++
+     <div class="section-label">${context.getString(R.string.web_installed_addons)}</div>
+     <ul class="addon-list" id="addonList"></ul>
+     <div class="empty-state" id="emptyState">${context.getString(R.string.web_no_addons)}</div>
+@@ -309,6 +321,44 @@ ${tabButtons}
+     text-transform: uppercase;
+     margin-bottom: 1rem;
+   }
++  .community-directory {
++    margin: 1.5rem 0 2rem;
++    padding: 1rem;
++    border: 1px solid rgba(72, 163, 255, 0.24);
++    border-radius: 12px;
++    background: rgba(24, 112, 200, 0.08);
++  }
++  .community-description,
++  .community-status,
++  .community-attribution {
++    color: rgba(255, 255, 255, 0.55);
++    font-size: 0.8rem;
++    line-height: 1.45;
++  }
++  .community-description { margin: -0.25rem 0 0.85rem; }
++  .community-status { display: none; padding: 0.75rem 0 0.25rem; }
++  .community-attribution {
++    display: inline-block;
++    margin-top: 0.75rem;
++    color: #68b5ff;
++  }
++  .community-categories {
++    color: rgba(255, 255, 255, 0.35);
++    font-size: 0.72rem;
++    margin-top: 0.25rem;
++  }
++  .badge-community {
++    display: inline-block;
++    margin-left: 0.4rem;
++    padding: 0.1rem 0.35rem;
++    border: 1px solid rgba(104, 181, 255, 0.45);
++    border-radius: 999px;
++    color: #8cc8ff;
++    font-size: 0.58rem;
++    font-weight: 700;
++    text-transform: uppercase;
++    vertical-align: middle;
++  }
+   .addon-list {
+     list-style: none;
+   }
+@@ -1146,6 +1196,7 @@ var pollTimer = null;
+ var pollStartTime = 0;
+ var POLL_TIMEOUT = 120000;
+ var POLL_INTERVAL = 1500;
++var COMMUNITY_ADDONS_API = 'https://stremio-addons.net/api/v0';
+
+ var i18n = {
+   newCollection: '${context.getString(R.string.collections_new).replace("'", "\\'")}',
+@@ -1905,6 +1956,104 @@ function disableAllCollections() {
+   renderCollections();
+ }
+
++function safeCommunityHttpsUrl(value) {
++  try {
++    var parsed = new URL(String(value || ''));
++    return parsed.protocol === 'https:' ? parsed.toString() : null;
++  } catch (_) {
++    return null;
++  }
++}
++
++function encodeCommunityArgument(value) {
++  return encodeURIComponent(value).replace(/'/g, '%27');
++}
++
++function setCommunityStatus(message, isError) {
++  var status = document.getElementById('communityStatus');
++  if (!status) return;
++  status.textContent = message || '';
++  status.style.display = message ? 'block' : 'none';
++  status.style.color = isError ? '#CF6679' : 'rgba(255, 255, 255, 0.55)';
++}
++
++function renderCommunityAddons(items) {
++  var list = document.getElementById('communityAddonList');
++  if (!list) return;
++  list.innerHTML = '';
++  if (!Array.isArray(items) || items.length === 0) {
++    setCommunityStatus('${context.getString(R.string.web_community_empty).replace("'", "\\'")}', false);
++    return;
++  }
++
++  setCommunityStatus('', false);
++  items.forEach(function(item) {
++    var manifest = item && item.manifest ? item.manifest : {};
++    var manifestUrl = safeCommunityHttpsUrl(item && item.manifestUrl);
++    if (!manifestUrl) return;
++    var configureUrl = safeCommunityHttpsUrl(item && item.configureUrl);
++    var behaviorHints = manifest && manifest.behaviorHints ? manifest.behaviorHints : {};
++    var configurationRequired = behaviorHints.configurationRequired === true;
++    var resources = Array.isArray(manifest.resources) ? manifest.resources : [];
++    var catalogOnly = resources.length > 0 && resources.every(function(resource) {
++      return resource === 'catalog' || (resource && resource.name === 'catalog');
++    });
++    var categories = Array.isArray(item.categories)
++      ? item.categories.map(function(category) { return category && category.name; }).filter(Boolean).slice(0, 5)
++      : [];
++    var encodedManifest = encodeCommunityArgument(manifestUrl);
++    var encodedConfigure = configureUrl ? encodeCommunityArgument(configureUrl) : '';
++    var li = document.createElement('li');
++    li.className = 'addon-item';
++    li.innerHTML =
++      '<div class="addon-info">' +
++        '<div class="addon-name">' + escapeHtml(manifest.name || item.slug || manifestUrl) +
++          (catalogOnly ? ' <span class="badge-community">${context.getString(R.string.web_community_catalog_only).replace("'", "\\'")}</span>' : '') +
++          (configurationRequired ? ' <span class="badge-community">${context.getString(R.string.web_community_configuration_required).replace("'", "\\'")}</span>' : '') +
++        '</div>' +
++        '<div class="addon-desc">' + escapeHtml(manifest.description || '') + '</div>' +
++        '<div class="community-categories">' + escapeHtml(categories.join(' · ')) + '</div>' +
++      '</div>' +
++      '<div class="addon-actions">' +
++        (configureUrl ? '<button class="btn btn-toggle" type="button" onclick="openCommunityConfigure(\'' + encodedConfigure + '\')">${context.getString(R.string.web_community_configure).replace("'", "\\'")}</button>' : '') +
++        (!configurationRequired ? '<button class="btn" type="button" onclick="installCommunityAddon(\'' + encodedManifest + '\')">${context.getString(R.string.web_community_add_default).replace("'", "\\'")}</button>' : '') +
++      '</div>';
++    list.appendChild(li);
++  });
++}
++
++async function loadCommunityAddons() {
++  var input = document.getElementById('communitySearch');
++  var query = input ? input.value.trim() : '';
++  setCommunityStatus('${context.getString(R.string.web_community_loading).replace("'", "\\'")}', false);
++  try {
++    var endpoint = COMMUNITY_ADDONS_API + '/addons?limit=25&sort_by=stars&order=desc&nsfw=exclude';
++    if (query) endpoint += '&search=' + encodeURIComponent(query);
++    var response = await fetchWithTimeout(endpoint, { headers: { 'Accept': 'application/json' } }, 10000);
++    if (!response.ok) throw new Error('Community directory HTTP ' + response.status);
++    var payload = await response.json();
++    renderCommunityAddons(payload && payload.addons);
++  } catch (_) {
++    renderCommunityAddons([]);
++    setCommunityStatus('${context.getString(R.string.web_community_error).replace("'", "\\'")}', true);
++  }
++}
++
++function installCommunityAddon(encodedManifestUrl) {
++  var manifestUrl = safeCommunityHttpsUrl(decodeURIComponent(encodedManifestUrl || ''));
++  if (!manifestUrl) return;
++  var input = document.getElementById('addonUrl');
++  if (!input) return;
++  input.value = manifestUrl;
++  addAddon();
++}
++
++function openCommunityConfigure(encodedConfigureUrl) {
++  var configureUrl = safeCommunityHttpsUrl(decodeURIComponent(encodedConfigureUrl || ''));
++  if (!configureUrl) return;
++  window.open(configureUrl, '_blank', 'noopener,noreferrer');
++}
++
+ async function addAddon() {
+   if (!allowAddonManagement) return;
+   const input = document.getElementById('addonUrl');
+@@ -3335,6 +3484,13 @@ if (addonUrlInput) {
+   });
+ }
+
++var communitySearchInput = document.getElementById('communitySearch');
++if (communitySearchInput) {
++  communitySearchInput.addEventListener('keydown', function(e) {
++    if (e.key === 'Enter') loadCommunityAddons();
++  });
++}
++
+ loadState();
+ </script>
+ </body>
 diff --git a/app/src/main/java/com/nuvio/tv/data/local/AppOnboardingDataStore.kt b/app/src/main/java/com/nuvio/tv/data/local/AppOnboardingDataStore.kt
 index 1469d80..3cb639d 100644
 --- a/app/src/main/java/com/nuvio/tv/data/local/AppOnboardingDataStore.kt
 +++ b/app/src/main/java/com/nuvio/tv/data/local/AppOnboardingDataStore.kt
 @@ -27,7 +27,10 @@ class AppOnboardingDataStore @Inject constructor(
      private val hasSeenAuthQrOnFirstLaunchKey = booleanPreferencesKey("has_seen_auth_qr_on_first_launch")
- 
+
      val hasSeenAuthQrOnFirstLaunch: Flow<Boolean> = dataStore.data.map { prefs ->
 -        prefs[hasSeenAuthQrOnFirstLaunchKey] ?: false
 +        // StreamVerse is designed to work locally with the owner's own
@@ -96,7 +291,7 @@ index 1469d80..3cb639d 100644
 +        // Fire TV install must never be stopped by the QR account screen.
 +        prefs[hasSeenAuthQrOnFirstLaunchKey] ?: true
      }
- 
+
      suspend fun setHasSeenAuthQrOnFirstLaunch(value: Boolean) {
 diff --git a/app/src/main/java/com/nuvio/tv/domain/model/ThemeAccess.kt b/app/src/main/java/com/nuvio/tv/domain/model/ThemeAccess.kt
 index f74c310..5304aa8 100644
@@ -121,16 +316,16 @@ index 119f029..23b975e 100644
 --- a/app/src/main/java/com/nuvio/tv/ui/theme/Theme.kt
 +++ b/app/src/main/java/com/nuvio/tv/ui/theme/Theme.kt
 @@ -40,7 +40,9 @@ val LocalNuvioExtendedColors = staticCompositionLocalOf {
- 
+
  val LocalNuvioTextStyles = staticCompositionLocalOf { NuvioTextStyles }
- 
+
 -val LocalAppTheme = staticCompositionLocalOf { AppTheme.WHITE }
 +// StreamVerse opens with the cinematic Ocean palette: near-black surfaces,
 +// electric-blue primary actions, and a clearly visible D-pad focus ring.
 +val LocalAppTheme = staticCompositionLocalOf { AppTheme.OCEAN }
- 
+
  val LocalSettingsUiStyle = staticCompositionLocalOf { SettingsUiStyle.CLASSIC }
- 
+
 @@ -51,7 +53,7 @@ val LocalNuvioFocusRingStyle = staticCompositionLocalOf {
  @OptIn(ExperimentalTvMaterial3Api::class)
  @Composable
@@ -141,7 +336,7 @@ index 119f029..23b975e 100644
      amoledMode: Boolean = false,
      amoledSurfacesMode: Boolean = false,
 diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
-index a5d0d38..ed43903 100644
+index a5d0d38..9113cfb 100644
 --- a/app/src/main/res/values/strings.xml
 +++ b/app/src/main/res/values/strings.xml
 @@ -1,5 +1,5 @@
@@ -151,3 +346,22 @@ index a5d0d38..ed43903 100644
      <string name="tv_channel_continue_watching">Continue Watching</string>
      <string name="type_movie">Movie</string>
      <string name="type_movies">Movies</string>
+@@ -15,6 +15,18 @@
+     <string name="web_btn_add">Add</string>
+     <string name="web_installed_addons">Installed Addons</string>
+     <string name="web_no_addons">No addons installed</string>
++    <string name="web_community_addons">Community Add-ons</string>
++    <string name="web_community_addons_description">Browse the independent Stremio Addons directory. Configure personal services on the provider’s page, then install the resulting manifest URL here.</string>
++    <string name="web_community_search_placeholder">Search approved add-ons</string>
++    <string name="web_community_browse">Browse</string>
++    <string name="web_community_loading">Loading community add-ons…</string>
++    <string name="web_community_empty">No approved add-ons matched your search.</string>
++    <string name="web_community_error">The community directory is unavailable. You can still install a manifest URL manually.</string>
++    <string name="web_community_add_default">Add default</string>
++    <string name="web_community_configure">Configure</string>
++    <string name="web_community_catalog_only">Catalog only</string>
++    <string name="web_community_configuration_required">Configuration required</string>
++    <string name="web_community_attribution">Directory data provided by Stremio Addons</string>
+     <string name="web_home_catalogs">Home Catalogs and Collections</string>
+     <string name="web_no_catalogs">No home catalogs available</string>
+     <string name="web_btn_save">Save Changes</string>

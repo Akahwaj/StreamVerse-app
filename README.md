@@ -8,6 +8,8 @@ StreamVerse is a personal Android TV and Fire TV media hub with a cinematic, rem
 - Poster rows for Movies, TV Shows, Anime, Continue Watching, and custom collections
 - Stremio-compatible add-on support
 - User-installable community manifests and compatible open-source GitHub plugin repositories
+- An attributed, searchable Stremio Addons community directory in the phone-accessible Fire TV manager, including configurable catalog add-ons such as Streaming Catalogs
+- Configuration-required aggregators such as AIOStreams are routed through their setup page; StreamVerse accepts the resulting private manifest without exposing it in the repository
 - TMDB movie/TV discovery, lists, collections, artwork, companies, and network catalogs
 - IMDb IDs and ratings, with MDBList aggregation for IMDb, TMDB, Rotten Tomatoes, Metacritic, Letterboxd, Trakt, and MyAnimeList ratings
 - Trakt and Simkl account tracking, library/history synchronization, public lists, and playback scrobbling
@@ -33,6 +35,8 @@ See [Actions](https://github.com/Akahwaj/StreamVerse-app/actions) for build prog
 ## Privacy and setup
 
 Your add-on URLs, playlists, provider credentials, and API keys are personal configuration. They are not committed to this public repository. Add them on your own device or through the companion transfer flow. Ratings from Rotten Tomatoes and the other MDBList providers use the user's authorized MDBList API access; StreamVerse does not scrape provider websites.
+
+The optional Community Add-ons browser uses the public, read-only [Stremio Addons API](https://docs.stremio-addons.net/developers/api) for personal use and displays the attribution required by that directory. It excludes NSFW listings by default and does not import private or preconfigured manifests.
 
 ## License
 

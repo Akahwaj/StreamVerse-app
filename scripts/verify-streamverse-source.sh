@@ -153,6 +153,11 @@ require_file "app/src/main/java/com/nuvio/tv/ui/screens/settings/SimklSettingsVi
 require_match "app/build.gradle.kts" 'SIMKL_CLIENT_ID' "Simkl OAuth configuration is compiled"
 
 require_match "app/src/main/java/com/nuvio/tv/data/remote/dto/AddonManifestDto.kt" 'catalogs' "Community add-on movie, series, anime, and Live TV catalogs are manifest-driven"
+require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" "https://stremio-addons.net/api/v0" "Approved community add-on directory API"
+require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" "nsfw=exclude" "Community directory excludes NSFW listings by default"
+require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" "configureUrl" "Configurable community add-ons open their provider setup page"
+require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" "configurationRequired" "Configuration-required aggregators cannot be installed as empty default manifests"
+require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" "Directory data provided by Stremio Addons|web_community_attribution" "Community directory attribution remains visible"
 
 # Live playback compatibility. This validates HLS/M3U playback and Android TV
 # EPG integration; it does not claim a standalone XMLTV/Xtream library manager.
