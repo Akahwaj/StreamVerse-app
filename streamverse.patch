@@ -49,6 +49,31 @@ index f976ac1..09e8c62 100644
              isDebuggable = false
              isMinifyEnabled = false
 
+@@ -269,7 +271,7 @@ android {
+         abi {
+             isEnable = !buildingAppBundle
+             reset()
+-            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
++            include("armeabi-v7a", "arm64-v8a")
+             isUniversalApk = true
+         }
+     }
+@@ -310,6 +312,15 @@ android {
+     packaging {
+         jniLibs {
+             useLegacyPackaging = true
++            // Fire TV Stick devices are Android/Fire OS targets that require
++            // 32-bit ARM support; keep the installable APK ARM-only instead of
++            // carrying x86 desktop/emulator libraries.
++            excludes += setOf(
++                "lib/x86/**",
++                "lib/x86/*",
++                "lib/x86_64/**",
++                "lib/x86_64/*"
++            )
+             // Keep one consistent native set across dependencies.
+             pickFirsts += listOf(
+                 "lib/*/libc++_shared.so",
 @@ -331,7 +333,12 @@ android {
  androidComponents {
      onVariants(selector().withBuildType("debug")) { variant ->
@@ -62,16 +87,6 @@ index f976ac1..09e8c62 100644
 +        )
      }
  }
-
-@@ -269,7 +276,7 @@ android {
-         abi {
-             isEnable = !buildingAppBundle
-             reset()
--            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
-+            include("armeabi-v7a", "arm64-v8a")
-             isUniversalApk = true
-         }
-     }
 
 diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
 index c1c24f9..8b4cced 100644
