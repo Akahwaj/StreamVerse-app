@@ -119,6 +119,11 @@ if app is None:
     print("banner=")
     print("leanback_feature=false")
     print("touchscreen_not_required=false")
+    print("internet_permission=false")
+    print("install_permission=false")
+    print("epg_read_permission=false")
+    print("epg_write_permission=false")
+    print("streamverse_scheme=false")
     raise SystemExit
 
 leanback_feature = False
@@ -134,11 +139,15 @@ for feature in root.findall("uses-feature"):
 launcher = ""
 launcher_exported = False
 launcher_banner = ""
+streamverse_scheme = False
 for tag in ("activity", "activity-alias"):
     for activity in app.findall(tag):
         for intent_filter in activity.findall("intent-filter"):
             actions = {node.get(ANDROID + "name") for node in intent_filter.findall("action")}
             categories = {node.get(ANDROID + "name") for node in intent_filter.findall("category")}
+            schemes = {node.get(ANDROID + "scheme") for node in intent_filter.findall("data")}
+            if "streamverse" in schemes:
+                streamverse_scheme = True
             if (
                 "android.intent.action.MAIN" in actions
                 and "android.intent.category.LEANBACK_LAUNCHER" in categories
@@ -153,11 +162,20 @@ for tag in ("activity", "activity-alias"):
         break
 
 banner = launcher_banner or app.get(ANDROID + "banner", "")
+permissions = {
+    node.get(ANDROID + "name", "")
+    for node in root.findall("uses-permission")
+}
 print(f"launcher_activity={launcher}")
 print(f"launcher_exported={'true' if launcher_exported else 'false'}")
 print(f"banner={banner}")
 print(f"leanback_feature={'true' if leanback_feature else 'false'}")
 print(f"touchscreen_not_required={'true' if touchscreen_not_required else 'false'}")
+print(f"internet_permission={'true' if 'android.permission.INTERNET' in permissions else 'false'}")
+print(f"install_permission={'true' if 'android.permission.REQUEST_INSTALL_PACKAGES' in permissions else 'false'}")
+print(f"epg_read_permission={'true' if 'com.android.providers.tv.permission.READ_EPG_DATA' in permissions else 'false'}")
+print(f"epg_write_permission={'true' if 'com.android.providers.tv.permission.WRITE_EPG_DATA' in permissions else 'false'}")
+print(f"streamverse_scheme={'true' if streamverse_scheme else 'false'}")
 print(f"min_sdk={min_sdk}")
 PY
 
@@ -166,6 +184,11 @@ PY
   banner=$(sed -n 's/^banner=//p' "$MANIFEST_CHECK_FILE")
   leanback_feature=$(sed -n 's/^leanback_feature=//p' "$MANIFEST_CHECK_FILE")
   touchscreen_not_required=$(sed -n 's/^touchscreen_not_required=//p' "$MANIFEST_CHECK_FILE")
+  internet_permission=$(sed -n 's/^internet_permission=//p' "$MANIFEST_CHECK_FILE")
+  install_permission=$(sed -n 's/^install_permission=//p' "$MANIFEST_CHECK_FILE")
+  epg_read_permission=$(sed -n 's/^epg_read_permission=//p' "$MANIFEST_CHECK_FILE")
+  epg_write_permission=$(sed -n 's/^epg_write_permission=//p' "$MANIFEST_CHECK_FILE")
+  streamverse_scheme=$(sed -n 's/^streamverse_scheme=//p' "$MANIFEST_CHECK_FILE")
   min_sdk=$(sed -n 's/^min_sdk=//p' "$MANIFEST_CHECK_FILE")
 
   [[ -n "$launcher" ]]     && pass "Leanback launcher activity resolves: $launcher"     || fail "No MAIN + LEANBACK_LAUNCHER activity found"
@@ -173,6 +196,10 @@ PY
   [[ -n "$banner" ]]     && pass "TV banner resource is declared: $banner"     || fail "TV banner resource is missing"
   [[ "$leanback_feature" == "true" ]]     && pass "Leanback feature is declared"     || fail "android.software.leanback feature is missing"
   [[ "$touchscreen_not_required" == "true" ]]     && pass "Touchscreen is explicitly not required"     || fail "android.hardware.touchscreen must be declared required=false"
+  [[ "$internet_permission" == "true" ]]     && pass "Network access is declared for web and streaming"     || fail "android.permission.INTERNET is missing"
+  [[ "$install_permission" == "true" ]]     && pass "Update installer permission is declared"     || fail "android.permission.REQUEST_INSTALL_PACKAGES is missing"
+  [[ "$epg_read_permission" == "true" && "$epg_write_permission" == "true" ]]     && pass "Android TV EPG permissions are declared"     || fail "Android TV EPG permissions are incomplete"
+  [[ "$streamverse_scheme" == "true" ]]     && pass "StreamVerse web/deep-link scheme is declared"     || fail "streamverse deep-link scheme is missing"
 else
   fail "apkanalyzer could not decode the merged manifest"
 fi
