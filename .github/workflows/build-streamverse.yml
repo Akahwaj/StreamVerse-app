@@ -1,36 +1,467 @@
-name: Build StreamVerse Fire TV APK
+name: Build, validate, and release StreamVerse
 
 on:
   push:
-    branches: [main, streamverse-native-base]
+    branches:
+      - main
+      - copilot/update-streaming-logic
+      - fix/fire-tv-arm64-a-to-z
+    tags:
+      - "v*"
+    paths:
+      - ".github/workflows/build-streamverse.yml"
+      - "streamverse.patch"
+      - "scripts/**"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/build-streamverse.yml"
+      - "streamverse.patch"
+      - "scripts/**"
   workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: Immutable NuvioTV commit SHA or tag
+        required: true
+        type: string
+        default: b95c899af04189f97284d3c91cb2c478fafc9c04
+  workflow_call:
+    inputs:
+      upstream_repository:
+        description: Owner/repository containing the Android TV source
+        required: false
+        type: string
+        default: NuvioMedia/NuvioTV
+      upstream_ref:
+        description: Immutable upstream commit SHA or tag
+        required: false
+        type: string
+        default: b95c899af04189f97284d3c91cb2c478fafc9c04
+      patch_path:
+        description: Repository-relative StreamVerse patch
+        required: false
+        type: string
+        default: streamverse.patch
+    secrets:
+      STREAMVERSE_KEYSTORE_B64:
+        required: false
+      STREAMVERSE_KEY_ALIAS:
+        required: false
+      STREAMVERSE_KEY_PASSWORD:
+        required: false
+      STREAMVERSE_STORE_PASSWORD:
+        required: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: streamverse-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+env:
+  UPSTREAM_REPOSITORY: ${{ inputs.upstream_repository || 'NuvioMedia/NuvioTV' }}
+  UPSTREAM_REF: ${{ inputs.upstream_ref || 'b95c899af04189f97284d3c91cb2c478fafc9c04' }}
+  PATCH_PATH: ${{ inputs.patch_path || 'streamverse.patch' }}
+  EXPECTED_ABIS: armeabi-v7a arm64-v8a
+  EXPECTED_PACKAGE: com.akahwaj.streamverse
+  MIN_MIB: "40"
+  MAX_MIB: "200"
+  ARTIFACT_NAME: StreamVerse-Fire-TV-universal-arm
+
 jobs:
-  build:
+  build-validate-package:
+    name: UI, catalogs, tracking, Live TV, updater, and APK
     runs-on: ubuntu-latest
+    timeout-minutes: 90
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v5
+      - name: Check out StreamVerse orchestration source
+        uses: actions/checkout@v4
+        with:
+          path: orchestrator
+
+      - name: Check out pinned Android TV source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.UPSTREAM_REPOSITORY }}
+          ref: ${{ env.UPSTREAM_REF }}
+          path: source
+          fetch-depth: 1
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Fetch GPLv3 NuvioTV source
-        run: git clone --depth 1 https://github.com/NuvioMedia/NuvioTV.git nuvio-tv
-      - name: Apply StreamVerse changes
-        run: git -C nuvio-tv apply ../streamverse.patch
-      - name: Build universal debug APK
-        working-directory: nuvio-tv
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Validate and apply StreamVerse customization
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PATCH_PATH" != /* ]] || {
+            echo "::error::Patch path must be repository-relative"
+            exit 1
+          }
+
+          patch_file=$(realpath -m "$GITHUB_WORKSPACE/orchestrator/$PATCH_PATH")
+          orchestrator_root=$(realpath "$GITHUB_WORKSPACE/orchestrator")
+          [[ "$patch_file" == "$orchestrator_root/"* ]] || {
+            echo "::error::Patch path escapes the StreamVerse repository"
+            exit 1
+          }
+          [[ -f "$patch_file" ]] || {
+            echo "::error::Patch not found: $PATCH_PATH"
+            exit 1
+          }
+
+          git -C source apply --check "$patch_file"
+          git -C source apply "$patch_file"
+
+      - name: Configure version and signing channel
+        id: release-config
+        shell: bash
         env:
-          CI_USE_DEBUG_SIGNING: "true"
-        run: ./gradlew :app:assembleFullDebug --stacktrace
-      - name: Upload Fire TV APK
+          KEYSTORE_B64: ${{ secrets.STREAMVERSE_KEYSTORE_B64 }}
+          KEY_ALIAS: ${{ secrets.STREAMVERSE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.STREAMVERSE_KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STREAMVERSE_STORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          version_code=$((200000 + GITHUB_RUN_NUMBER))
+
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            version_name="${GITHUB_REF_NAME#v}"
+            [[ "$version_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] || {
+              echo "::error::Release tags must use semantic versioning, for example v1.0.0"
+              exit 1
+            }
+
+            for value_name in KEYSTORE_B64 KEY_ALIAS KEY_PASSWORD STORE_PASSWORD; do
+              [[ -n "${!value_name}" ]] || {
+                echo "::error::Stable release signing secret is missing: $value_name"
+                exit 1
+              }
+            done
+
+            key_file="$RUNNER_TEMP/streamverse-release.jks"
+            printf '%s' "$KEYSTORE_B64" | base64 --decode > "$key_file"
+            chmod 600 "$key_file"
+
+            {
+              echo "CI_USE_DEBUG_SIGNING=false"
+              echo "NUVIO_RELEASE_STORE_FILE=$key_file"
+              echo "NUVIO_RELEASE_KEY_ALIAS=$KEY_ALIAS"
+              echo "NUVIO_RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
+              echo "NUVIO_RELEASE_STORE_PASSWORD=$STORE_PASSWORD"
+              echo "RELEASE_CHANNEL=stable"
+            } >> "$GITHUB_ENV"
+            echo "stable_signed=true" >> "$GITHUB_OUTPUT"
+          else
+            version_name="0.0.${GITHUB_RUN_NUMBER}-ci"
+            {
+              echo "CI_USE_DEBUG_SIGNING=true"
+              echo "RELEASE_CHANNEL=ci"
+            } >> "$GITHUB_ENV"
+            echo "stable_signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          {
+            echo "STREAMVERSE_VERSION_CODE=$version_code"
+            echo "STREAMVERSE_VERSION_NAME=$version_name"
+          } >> "$GITHUB_ENV"
+
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
+          echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp the APK version into the pinned source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -i -E \
+            "s/^        versionCode = [0-9]+$/        versionCode = $STREAMVERSE_VERSION_CODE/" \
+            source/app/build.gradle.kts
+          sed -i -E \
+            "s/^        versionName = \"[^\"]+\"$/        versionName = \"$STREAMVERSE_VERSION_NAME\"/" \
+            source/app/build.gradle.kts
+
+          grep -Fxq "        versionCode = $STREAMVERSE_VERSION_CODE" source/app/build.gradle.kts
+          grep -Fxq "        versionName = \"$STREAMVERSE_VERSION_NAME\"" source/app/build.gradle.kts
+
+      - name: Audit UI, catalogs, tracking, Live TV, and updater source
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash orchestrator/scripts/verify-streamverse-source.sh \
+            source "$GITHUB_WORKSPACE/streamverse-source-audit.txt"
+
+      - name: Run mandatory StreamVerse contract tests
+        id: contract-tests
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testFullReleaseUnitTest --stacktrace \
+            --tests 'com.nuvio.tv.core.server.AddonConfigServerTest' \
+            --tests 'com.nuvio.tv.core.tmdb.TmdbCollectionSourceResolverTest' \
+            --tests 'com.nuvio.tv.core.tmdb.TmdbMetadataServiceTest' \
+            --tests 'com.nuvio.tv.core.tracking.TrackingProviderRegistryTest' \
+            --tests 'com.nuvio.tv.core.tracking.TrackingScrobbleCoordinatorTest' \
+            --tests 'com.nuvio.tv.data.repository.StreamRepositoryPluginIsolationTest' \
+            --tests 'com.nuvio.tv.data.repository.TraktTrackingScrobblerTest' \
+            --tests 'com.nuvio.tv.data.simkl.SimklPlaybackReconciliationTest' \
+            --tests 'com.nuvio.tv.domain.model.CatalogDescriptorExtensionsTest' \
+            --tests 'com.nuvio.tv.domain.model.CatalogRowPaginationTest' \
+            --tests 'com.nuvio.tv.ui.screens.player.PlayerMediaSourceFactoryTest' \
+            --tests 'com.nuvio.tv.ui.screens.player.PlayerStartupPlaybackPolicyTest'
+
+      - name: Run complete upstream unit-test suite (advisory)
+        id: upstream-tests
+        continue-on-error: true
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testFullReleaseUnitTest --rerun-tasks --stacktrace
+
+      - name: Build optimized full release APK
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleFullRelease --stacktrace
+
+      - name: Select exactly one standalone universal ARM APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t matches < <(
+            find source/app/build/outputs/apk -type f \
+              -name "*universal*.apk" | sort
+          )
+
+          if [[ ${#matches[@]} -ne 1 ]]; then
+            printf '::error::Expected exactly one universal ARM APK; found %s\n' \
+              "${#matches[@]}"
+            printf '%s\n' "${matches[@]:-}"
+            exit 1
+          fi
+
+          mkdir -p dist
+          apk_name="${ARTIFACT_NAME}-${STREAMVERSE_VERSION_NAME}.apk"
+          cp "${matches[0]}" "dist/$apk_name"
+          printf 'APK_PATH=%s\n' "$GITHUB_WORKSPACE/dist/$apk_name" >> "$GITHUB_ENV"
+          printf 'APK_FILENAME=%s\n' "$apk_name" >> "$GITHUB_ENV"
+
+      - name: Strip non-ARM libraries and re-sign APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t x86_entries < <(zipinfo -1 "$APK_PATH" | grep -E '^lib/(x86|x86_64)/' || true)
+          if (( ${#x86_entries[@]} > 0 )); then
+            zip -d "$APK_PATH" 'lib/x86/*' 'lib/x86_64/*'
+          fi
+
+          zipalign=$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -n 1)
+          apksigner=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+          [[ -x "$zipalign" && -x "$apksigner" ]] || {
+            echo "::error::zipalign and apksigner are required after APK normalization"
+            exit 1
+          }
+
+          unsigned_apk="${APK_PATH%.apk}-aligned.apk"
+          "$zipalign" -f -p 4 "$APK_PATH" "$unsigned_apk"
+
+          if [[ "$CI_USE_DEBUG_SIGNING" == "true" ]]; then
+            debug_keystore="$HOME/.android/debug.keystore"
+            [[ -f "$debug_keystore" ]] || {
+              mkdir -p "$HOME/.android"
+              keytool -genkeypair -v \
+                -keystore "$debug_keystore" \
+                -storepass android \
+                -alias androiddebugkey \
+                -keypass android \
+                -keyalg RSA \
+                -keysize 2048 \
+                -validity 10000 \
+                -dname "CN=Android Debug,O=Android,C=US"
+            }
+            "$apksigner" sign \
+              --ks "$debug_keystore" \
+              --ks-key-alias androiddebugkey \
+              --ks-pass pass:android \
+              --key-pass pass:android \
+              --out "$APK_PATH" \
+              "$unsigned_apk"
+          else
+            "$apksigner" sign \
+              --ks "$NUVIO_RELEASE_STORE_FILE" \
+              --ks-key-alias "$NUVIO_RELEASE_KEY_ALIAS" \
+              --ks-pass "pass:$NUVIO_RELEASE_STORE_PASSWORD" \
+              --key-pass "pass:$NUVIO_RELEASE_KEY_PASSWORD" \
+              --out "$APK_PATH" \
+              "$unsigned_apk"
+          fi
+
+      - name: Verify the exact installable Fire TV APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash orchestrator/scripts/verify-fire-tv-apk.sh \
+            "$APK_PATH" "$EXPECTED_ABIS" "$EXPECTED_PACKAGE" "$MIN_MIB" "$MAX_MIB"
+
+      - name: Generate checksum and automatic-update metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum "$APK_PATH" > "dist/${APK_FILENAME}.sha256"
+          sha256=$(cut -d ' ' -f 1 "dist/${APK_FILENAME}.sha256")
+
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            download_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${APK_FILENAME}"
+          else
+            download_url=""
+          fi
+
+          jq -n \
+            --arg app "StreamVerse" \
+            --arg package "$EXPECTED_PACKAGE" \
+            --arg versionName "$STREAMVERSE_VERSION_NAME" \
+            --argjson versionCode "$STREAMVERSE_VERSION_CODE" \
+            --arg abis "$EXPECTED_ABIS" \
+            --arg channel "$RELEASE_CHANNEL" \
+            --arg filename "$APK_FILENAME" \
+            --arg sha256 "$sha256" \
+            --arg downloadUrl "$download_url" \
+            --argjson stableSigned "${{ steps.release-config.outputs.stable_signed }}" \
+            '{
+              app: $app,
+              package: $package,
+              versionName: $versionName,
+              versionCode: $versionCode,
+              abis: ($abis | split(" ")),
+              channel: $channel,
+              filename: $filename,
+              sha256: $sha256,
+              downloadUrl: $downloadUrl,
+              stableSigned: $stableSigned
+            }' > dist/latest.json
+
+      - name: Publish validation summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## StreamVerse release verification'
+            echo
+            echo "- Source: ${UPSTREAM_REPOSITORY}@${UPSTREAM_REF}"
+            echo "- Version: ${STREAMVERSE_VERSION_NAME:-not configured}"
+            echo "- Channel: ${RELEASE_CHANNEL:-not configured}"
+            echo "- Mandatory StreamVerse contract tests: ${{ steps.contract-tests.outcome }}"
+            echo "- Complete pinned-upstream suite (advisory): ${{ steps.upstream-tests.outcome }}"
+            echo
+            if [[ -f streamverse-source-audit.txt ]]; then
+              echo '### UI, catalogs, tracking, embedded web, Live TV, and updater source'
+              sed 's/^/- /' streamverse-source-audit.txt
+            else
+              echo '- Source audit did not complete.'
+            fi
+            echo
+            if [[ -f apk-verification-summary.txt ]]; then
+              echo '### Exact APK'
+              sed 's/^/- /' apk-verification-summary.txt
+            else
+              echo '- APK verification did not complete.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload one installable APK
         uses: actions/upload-artifact@v4
         with:
-          name: StreamVerse-Fire-TV-debug
-          path: nuvio-tv/app/build/outputs/apk/full/debug/*.apk
+          name: ${{ env.ARTIFACT_NAME }}
+          path: dist/*.apk
           if-no-files-found: error
+          compression-level: 0
           retention-days: 14
+
+      - name: Upload update metadata and inspection reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: streamverse-inspection-${{ github.run_id }}
+          path: |
+            streamverse-source-audit.txt
+            apk-verification-summary.txt
+            apk-signature.txt
+            apk-badging.txt
+            apk-manifest.xml
+            apk-manifest-checks.txt
+            source/app/build/test-results/testFullReleaseUnitTest/**/*.xml
+            source/app/build/reports/tests/testFullReleaseUnitTest/**
+            dist/*.sha256
+            dist/latest.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  publish-release:
+    name: Publish stable APK for automatic updates
+    if: ${{ github.ref_type == 'tag' && startsWith(github.ref_name, 'v') }}
+    needs: build-validate-package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download the verified universal ARM APK
+        uses: actions/download-artifact@v4
+        with:
+          name: StreamVerse-Fire-TV-universal-arm
+          path: release
+
+      - name: Download update metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: streamverse-inspection-${{ github.run_id }}
+          path: release-metadata
+
+      - name: Publish GitHub Release and updater assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -t apks < <(find release -maxdepth 1 -type f -name '*.apk' | sort)
+          [[ ${#apks[@]} -eq 1 ]] || {
+            echo "::error::Expected exactly one verified APK for release"
+            exit 1
+          }
+
+          checksum=$(find release-metadata -type f -name '*.sha256' | head -n 1)
+          update_json=$(find release-metadata -type f -name 'latest.json' | head -n 1)
+          [[ -f "$checksum" && -f "$update_json" ]] || {
+            echo "::error::Update metadata is incomplete"
+            exit 1
+          }
+
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" \
+              "${apks[0]}" "$checksum" "$update_json" \
+              --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              "${apks[0]}" "$checksum" "$update_json" \
+              --verify-tag \
+              --generate-notes \
+              --title "StreamVerse ${GITHUB_REF_NAME#v}" \
+              --repo "$GITHUB_REPOSITORY"
+          fi
