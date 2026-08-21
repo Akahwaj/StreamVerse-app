@@ -22,7 +22,7 @@ StreamVerse is a personal Android TV and Fire TV media hub with a cinematic, rem
 
 ## Build
 
-GitHub Actions fetches a pinned GPLv3 upstream source revision, applies the StreamVerse patch, audits the native UI, embedded web tools, TMDB/IMDb/MDBList catalogs and ratings, Trakt/Simkl tracking, HLS/M3U playback, EPG declarations, and updater modules, then builds and verifies one ARM64 Fire TV APK.
+GitHub Actions fetches a pinned GPLv3 upstream source revision, applies the StreamVerse patch, audits the native UI, embedded web tools, TMDB/IMDb/MDBList catalogs and ratings, Trakt/Simkl tracking, HLS/M3U playback, EPG declarations, and updater modules, then builds and verifies one universal ARM Fire TV APK containing `armeabi-v7a` and `arm64-v8a` native support.
 
 Release-critical StreamVerse catalog, add-on, tracking, and playback contract tests are blocking. The complete pinned-upstream unit-test suite also runs and its report is always uploaded; known upstream failures remain visible as advisory results instead of being hidden or preventing exact APK inspection.
 

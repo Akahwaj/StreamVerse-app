@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # verify-fire-tv-apk.sh — strict acceptance gate for a Fire TV APK.
-# Usage: verify-fire-tv-apk.sh <apk_path> <expected_abi> <expected_package> <min_mib> <max_mib>
+# Usage: verify-fire-tv-apk.sh <apk_path> <expected_abis> <expected_package> <min_mib> <max_mib>
 set -euo pipefail
 
 APK_PATH="${1:?APK path required}"
-EXPECTED_ABI="${2:?Expected ABI required}"
+EXPECTED_ABIS="${2:?Expected ABI list required}"
 EXPECTED_PACKAGE="${3:?Expected package required}"
 MIN_MIB="${4:?Minimum MiB required}"
 MAX_MIB="${5:?Maximum MiB required}"
@@ -81,17 +81,12 @@ else
     [[ -n "$version_name" && -n "$version_code" ]]       && pass "Version is $version_name ($version_code)"       || fail "Version name or version code is missing"
 
     native_line=$(grep "^native-code:" "$BADGING_FILE" | head -n 1 || true)
-    if [[ "$native_line" == "native-code: '$EXPECTED_ABI'" ]]; then
-      pass "APK contains only the expected native ABI: $EXPECTED_ABI"
+    actual_abis=$(printf '%s\n' "$native_line" | grep -o "'[^']*'" | tr -d "'" | sort | tr '\n' ' ' | sed 's/ $//' || true)
+    expected_abis=$(printf '%s\n' $EXPECTED_ABIS | sort | tr '\n' ' ' | sed 's/ $//')
+    if [[ "$actual_abis" == "$expected_abis" ]]; then
+      pass "APK contains exactly the expected native ABIs: $EXPECTED_ABIS"
     else
-      fail "Native ABI set is not exactly '$EXPECTED_ABI': ${native_line:-none}"
-    fi
-
-    sdk_version=$(sed -n "s/^sdkVersion:'\([^']*\)'.*/\1/p" "$BADGING_FILE" | head -n 1)
-    if [[ "$sdk_version" =~ ^[0-9]+$ && "$sdk_version" -le 30 ]]; then
-      pass "Minimum SDK $sdk_version is compatible with Fire OS 8"
-    else
-      fail "Minimum SDK '${sdk_version:-unknown}' is not confirmed compatible with Fire OS 8"
+      fail "Native ABI set is not exactly '$EXPECTED_ABIS': ${native_line:-none}"
     fi
 
     grep -q "^application-label:" "$BADGING_FILE"       && pass "Application label is present"       || fail "Application label is missing"
@@ -151,15 +146,11 @@ for tag in ("activity", "activity-alias"):
             if (
                 "android.intent.action.MAIN" in actions
                 and "android.intent.category.LEANBACK_LAUNCHER" in categories
+                and not launcher
             ):
                 launcher = activity.get(ANDROID + "name", "")
                 launcher_exported = activity.get(ANDROID + "exported") == "true"
                 launcher_banner = activity.get(ANDROID + "banner", "")
-                break
-        if launcher:
-            break
-    if launcher:
-        break
 
 banner = launcher_banner or app.get(ANDROID + "banner", "")
 permissions = {
@@ -200,6 +191,7 @@ PY
   [[ "$install_permission" == "true" ]]     && pass "Update installer permission is declared"     || fail "android.permission.REQUEST_INSTALL_PACKAGES is missing"
   [[ "$epg_read_permission" == "true" && "$epg_write_permission" == "true" ]]     && pass "Android TV EPG permissions are declared"     || fail "Android TV EPG permissions are incomplete"
   [[ "$streamverse_scheme" == "true" ]]     && pass "StreamVerse web/deep-link scheme is declared"     || fail "streamverse deep-link scheme is missing"
+  [[ "$min_sdk" =~ ^[0-9]+$ && "$min_sdk" -le 30 ]]     && pass "Minimum SDK $min_sdk is compatible with Fire OS 8"     || fail "Minimum SDK '${min_sdk:-unknown}' is not confirmed compatible with Fire OS 8"
 else
   fail "apkanalyzer could not decode the merged manifest"
 fi

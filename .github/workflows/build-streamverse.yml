@@ -64,11 +64,11 @@ env:
   UPSTREAM_REPOSITORY: ${{ inputs.upstream_repository || 'NuvioMedia/NuvioTV' }}
   UPSTREAM_REF: ${{ inputs.upstream_ref || 'b95c899af04189f97284d3c91cb2c478fafc9c04' }}
   PATCH_PATH: ${{ inputs.patch_path || 'streamverse.patch' }}
-  EXPECTED_ABI: arm64-v8a
+  EXPECTED_ABIS: armeabi-v7a arm64-v8a
   EXPECTED_PACKAGE: com.akahwaj.streamverse
   MIN_MIB: "40"
   MAX_MIB: "180"
-  ARTIFACT_NAME: StreamVerse-Fire-TV-arm64-v8a
+  ARTIFACT_NAME: StreamVerse-Fire-TV-universal-arm
 
 jobs:
   build-validate-package:
@@ -234,25 +234,25 @@ jobs:
           set -euo pipefail
           ./gradlew :app:testFullReleaseUnitTest --rerun-tasks --stacktrace
 
-      - name: Build optimized full release APK splits
+      - name: Build optimized full release APK
         working-directory: source
         shell: bash
         run: |
           set -euo pipefail
           ./gradlew :app:assembleFullRelease --stacktrace
 
-      - name: Select exactly one standalone ARM64 APK
+      - name: Select exactly one standalone universal ARM APK
         shell: bash
         run: |
           set -euo pipefail
           mapfile -t matches < <(
             find source/app/build/outputs/apk -type f \
-              -name "*${EXPECTED_ABI}*.apk" ! -name "*universal*" | sort
+              -name "*universal*.apk" | sort
           )
 
           if [[ ${#matches[@]} -ne 1 ]]; then
-            printf '::error::Expected exactly one %s APK; found %s\n' \
-              "$EXPECTED_ABI" "${#matches[@]}"
+            printf '::error::Expected exactly one universal ARM APK; found %s\n' \
+              "${#matches[@]}"
             printf '%s\n' "${matches[@]:-}"
             exit 1
           fi
@@ -268,7 +268,7 @@ jobs:
         run: |
           set -euo pipefail
           bash orchestrator/scripts/verify-fire-tv-apk.sh \
-            "$APK_PATH" "$EXPECTED_ABI" "$EXPECTED_PACKAGE" "$MIN_MIB" "$MAX_MIB"
+            "$APK_PATH" "$EXPECTED_ABIS" "$EXPECTED_PACKAGE" "$MIN_MIB" "$MAX_MIB"
 
       - name: Generate checksum and automatic-update metadata
         shell: bash
@@ -288,7 +288,7 @@ jobs:
             --arg package "$EXPECTED_PACKAGE" \
             --arg versionName "$STREAMVERSE_VERSION_NAME" \
             --argjson versionCode "$STREAMVERSE_VERSION_CODE" \
-            --arg abi "$EXPECTED_ABI" \
+            --arg abis "$EXPECTED_ABIS" \
             --arg channel "$RELEASE_CHANNEL" \
             --arg filename "$APK_FILENAME" \
             --arg sha256 "$sha256" \
@@ -299,7 +299,7 @@ jobs:
               package: $package,
               versionName: $versionName,
               versionCode: $versionCode,
-              abi: $abi,
+              abis: ($abis | split(" ")),
               channel: $channel,
               filename: $filename,
               sha256: $sha256,
@@ -372,10 +372,10 @@ jobs:
       contents: write
 
     steps:
-      - name: Download the verified ARM64 APK
+      - name: Download the verified universal ARM APK
         uses: actions/download-artifact@v4
         with:
-          name: StreamVerse-Fire-TV-arm64-v8a
+          name: StreamVerse-Fire-TV-universal-arm
           path: release
 
       - name: Download update metadata
