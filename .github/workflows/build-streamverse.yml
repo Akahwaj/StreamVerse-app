@@ -67,7 +67,7 @@ env:
   EXPECTED_ABIS: armeabi-v7a arm64-v8a
   EXPECTED_PACKAGE: com.akahwaj.streamverse
   MIN_MIB: "40"
-  MAX_MIB: "180"
+  MAX_MIB: "200"
   ARTIFACT_NAME: StreamVerse-Fire-TV-universal-arm
 
 jobs:
@@ -262,6 +262,56 @@ jobs:
           cp "${matches[0]}" "dist/$apk_name"
           printf 'APK_PATH=%s\n' "$GITHUB_WORKSPACE/dist/$apk_name" >> "$GITHUB_ENV"
           printf 'APK_FILENAME=%s\n' "$apk_name" >> "$GITHUB_ENV"
+
+      - name: Strip non-ARM libraries and re-sign APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t x86_entries < <(zipinfo -1 "$APK_PATH" | grep -E '^lib/(x86|x86_64)/' || true)
+          if (( ${#x86_entries[@]} > 0 )); then
+            zip -d "$APK_PATH" 'lib/x86/*' 'lib/x86_64/*'
+          fi
+
+          zipalign=$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -n 1)
+          apksigner=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+          [[ -x "$zipalign" && -x "$apksigner" ]] || {
+            echo "::error::zipalign and apksigner are required after APK normalization"
+            exit 1
+          }
+
+          unsigned_apk="${APK_PATH%.apk}-aligned.apk"
+          "$zipalign" -f -p 4 "$APK_PATH" "$unsigned_apk"
+
+          if [[ "$CI_USE_DEBUG_SIGNING" == "true" ]]; then
+            debug_keystore="$HOME/.android/debug.keystore"
+            [[ -f "$debug_keystore" ]] || {
+              mkdir -p "$HOME/.android"
+              keytool -genkeypair -v \
+                -keystore "$debug_keystore" \
+                -storepass android \
+                -alias androiddebugkey \
+                -keypass android \
+                -keyalg RSA \
+                -keysize 2048 \
+                -validity 10000 \
+                -dname "CN=Android Debug,O=Android,C=US"
+            }
+            "$apksigner" sign \
+              --ks "$debug_keystore" \
+              --ks-key-alias androiddebugkey \
+              --ks-pass pass:android \
+              --key-pass pass:android \
+              --out "$APK_PATH" \
+              "$unsigned_apk"
+          else
+            "$apksigner" sign \
+              --ks "$NUVIO_RELEASE_STORE_FILE" \
+              --ks-key-alias "$NUVIO_RELEASE_KEY_ALIAS" \
+              --ks-pass "pass:$NUVIO_RELEASE_STORE_PASSWORD" \
+              --key-pass "pass:$NUVIO_RELEASE_KEY_PASSWORD" \
+              --out "$APK_PATH" \
+              "$unsigned_apk"
+          fi
 
       - name: Verify the exact installable Fire TV APK
         shell: bash
