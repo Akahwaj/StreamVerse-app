@@ -204,13 +204,35 @@ jobs:
           bash orchestrator/scripts/verify-streamverse-source.sh \
             source "$GITHUB_WORKSPACE/streamverse-source-audit.txt"
 
-      - name: Run release unit tests
+      - name: Run mandatory StreamVerse contract tests
+        id: contract-tests
         working-directory: source
         shell: bash
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testFullReleaseUnitTest --stacktrace
+          ./gradlew :app:testFullReleaseUnitTest --stacktrace \
+            --tests 'com.nuvio.tv.core.server.AddonConfigServerTest' \
+            --tests 'com.nuvio.tv.core.tmdb.TmdbCollectionSourceResolverTest' \
+            --tests 'com.nuvio.tv.core.tmdb.TmdbMetadataServiceTest' \
+            --tests 'com.nuvio.tv.core.tracking.TrackingProviderRegistryTest' \
+            --tests 'com.nuvio.tv.core.tracking.TrackingScrobbleCoordinatorTest' \
+            --tests 'com.nuvio.tv.data.repository.StreamRepositoryPluginIsolationTest' \
+            --tests 'com.nuvio.tv.data.repository.TraktTrackingScrobblerTest' \
+            --tests 'com.nuvio.tv.data.simkl.SimklPlaybackReconciliationTest' \
+            --tests 'com.nuvio.tv.domain.model.CatalogDescriptorExtensionsTest' \
+            --tests 'com.nuvio.tv.domain.model.CatalogRowPaginationTest' \
+            --tests 'com.nuvio.tv.ui.screens.player.PlayerMediaSourceFactoryTest' \
+            --tests 'com.nuvio.tv.ui.screens.player.PlayerStartupPlaybackPolicyTest'
+
+      - name: Run complete upstream unit-test suite (advisory)
+        id: upstream-tests
+        continue-on-error: true
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testFullReleaseUnitTest --rerun-tasks --stacktrace
 
       - name: Build optimized full release APK splits
         working-directory: source
@@ -295,9 +317,11 @@ jobs:
             echo "- Source: ${UPSTREAM_REPOSITORY}@${UPSTREAM_REF}"
             echo "- Version: ${STREAMVERSE_VERSION_NAME:-not configured}"
             echo "- Channel: ${RELEASE_CHANNEL:-not configured}"
+            echo "- Mandatory StreamVerse contract tests: ${{ steps.contract-tests.outcome }}"
+            echo "- Complete pinned-upstream suite (advisory): ${{ steps.upstream-tests.outcome }}"
             echo
             if [[ -f streamverse-source-audit.txt ]]; then
-              echo '### UI, embedded web, Live TV, and updater source'
+              echo '### UI, catalogs, tracking, embedded web, Live TV, and updater source'
               sed 's/^/- /' streamverse-source-audit.txt
             else
               echo '- Source audit did not complete.'
@@ -332,6 +356,8 @@ jobs:
             apk-badging.txt
             apk-manifest.xml
             apk-manifest-checks.txt
+            source/app/build/test-results/testFullReleaseUnitTest/**/*.xml
+            source/app/build/reports/tests/testFullReleaseUnitTest/**
             dist/*.sha256
             dist/latest.json
           if-no-files-found: ignore
