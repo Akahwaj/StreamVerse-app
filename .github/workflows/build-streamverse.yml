@@ -125,10 +125,11 @@ jobs:
           }
 
           patch_files=("$patch_file")
-          if [[ "$PATCH_PATH" == "streamverse.patch" ]]; then
+          if [[ "${PATCH_PATH##*/}" == "streamverse.patch" ]]; then
+            patch_dir=$(dirname "$patch_file")
             for companion in \
-              "$orchestrator_root/streamverse-branding-core.patch" \
-              "$orchestrator_root/streamverse-branding-tv.patch"; do
+              "$patch_dir/streamverse-branding-core.patch" \
+              "$patch_dir/streamverse-branding-tv.patch"; do
               [[ -f "$companion" ]] || {
                 echo "::error::Required companion patch not found: ${companion##*/}"
                 exit 1
