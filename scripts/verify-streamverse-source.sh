@@ -49,7 +49,7 @@ require_sha256() {
   local description="$3"
   local actual=""
   if [[ -f "$SOURCE_ROOT/$relative_path" ]]; then
-    actual=$(sha256sum "$SOURCE_ROOT/$relative_path" | awk '{print $1}')
+    actual=$(sha256sum "$SOURCE_ROOT/$relative_path" 2>/dev/null | awk '{print $1}') || actual=""
   fi
   if [[ "$actual" == "$expected" ]]; then
     pass "$description"
