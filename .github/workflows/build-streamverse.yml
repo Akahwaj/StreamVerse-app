@@ -10,14 +10,14 @@ on:
       - "v*"
     paths:
       - ".github/workflows/build-streamverse.yml"
-      - "streamverse.patch"
+      - "streamverse*.patch"
       - "scripts/**"
   pull_request:
     branches:
       - main
     paths:
       - ".github/workflows/build-streamverse.yml"
-      - "streamverse.patch"
+      - "streamverse*.patch"
       - "scripts/**"
   workflow_dispatch:
     inputs:
@@ -124,8 +124,24 @@ jobs:
             exit 1
           }
 
-          git -C source apply --check "$patch_file"
-          git -C source apply "$patch_file"
+          patch_files=("$patch_file")
+          if [[ "$PATCH_PATH" == "streamverse.patch" ]]; then
+            for companion in \
+              "$orchestrator_root/streamverse-branding-core.patch" \
+              "$orchestrator_root/streamverse-branding-tv.patch"; do
+              [[ -f "$companion" ]] || {
+                echo "::error::Required companion patch not found: ${companion##*/}"
+                exit 1
+              }
+              patch_files+=("$companion")
+            done
+          fi
+
+          for candidate in "${patch_files[@]}"; do
+            echo "Applying ${candidate##*/}"
+            git -C source apply --check "$candidate"
+            git -C source apply "$candidate"
+          done
 
       - name: Configure version and signing channel
         id: release-config
@@ -402,71 +418,3 @@ jobs:
       - name: Upload update metadata and inspection reports
         if: always()
         uses: actions/upload-artifact@v4
-        with:
-          name: streamverse-inspection-${{ github.run_id }}
-          path: |
-            streamverse-source-audit.txt
-            apk-verification-summary.txt
-            apk-signature.txt
-            apk-badging.txt
-            apk-manifest.xml
-            apk-manifest-checks.txt
-            source/app/build/test-results/testFullReleaseUnitTest/**/*.xml
-            source/app/build/reports/tests/testFullReleaseUnitTest/**
-            dist/*.sha256
-            dist/latest.json
-          if-no-files-found: ignore
-          retention-days: 14
-
-  publish-release:
-    name: Publish stable APK for automatic updates
-    if: ${{ github.ref_type == 'tag' && startsWith(github.ref_name, 'v') }}
-    needs: build-validate-package
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Download the verified universal ARM APK
-        uses: actions/download-artifact@v4
-        with:
-          name: StreamVerse-Fire-TV-universal-arm
-          path: release
-
-      - name: Download update metadata
-        uses: actions/download-artifact@v4
-        with:
-          name: streamverse-inspection-${{ github.run_id }}
-          path: release-metadata
-
-      - name: Publish GitHub Release and updater assets
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          mapfile -t apks < <(find release -maxdepth 1 -type f -name '*.apk' | sort)
-          [[ ${#apks[@]} -eq 1 ]] || {
-            echo "::error::Expected exactly one verified APK for release"
-            exit 1
-          }
-
-          checksum=$(find release-metadata -type f -name '*.sha256' | head -n 1)
-          update_json=$(find release-metadata -type f -name 'latest.json' | head -n 1)
-          [[ -f "$checksum" && -f "$update_json" ]] || {
-            echo "::error::Update metadata is incomplete"
-            exit 1
-          }
-
-          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" \
-              "${apks[0]}" "$checksum" "$update_json" \
-              --clobber --repo "$GITHUB_REPOSITORY"
-          else
-            gh release create "$GITHUB_REF_NAME" \
-              "${apks[0]}" "$checksum" "$update_json" \
-              --verify-tag \
-              --generate-notes \
-              --title "StreamVerse ${GITHUB_REF_NAME#v}" \
-              --repo "$GITHUB_REPOSITORY"
-          fi
