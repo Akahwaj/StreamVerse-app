@@ -1,6 +1,11 @@
 name: Publish verified StreamVerse 0.0.35 CI APK
 
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/publish-verified-ci-0.0.35-apk.yml
   push:
     branches:
       - release/ci-0.0.35-direct-apk
