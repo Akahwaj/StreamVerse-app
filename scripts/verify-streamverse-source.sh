@@ -43,6 +43,21 @@ require_match() {
   fi
 }
 
+require_sha256() {
+  local relative_path="$1"
+  local expected="$2"
+  local description="$3"
+  local actual=""
+  if [[ -f "$SOURCE_ROOT/$relative_path" ]]; then
+    actual=$(sha256sum "$SOURCE_ROOT/$relative_path" 2>/dev/null | awk '{print $1}') || actual=""
+  fi
+  if [[ "$actual" == "$expected" ]]; then
+    pass "$description"
+  else
+    fail "$description (expected $expected, got ${actual:-missing})"
+  fi
+}
+
 if [[ ! -d "$SOURCE_ROOT/app/src/main" ]]; then
   echo "::error::Android source tree not found: $SOURCE_ROOT"
   exit 1
@@ -105,6 +120,11 @@ require_file "app/src/main/java/com/nuvio/tv/ui/screens/addon/AddonManagerScreen
 require_file "app/src/main/java/com/nuvio/tv/ui/screens/addon/AddonManagerViewModel.kt" "Add-on URL and manifest controller"
 require_match "app/src/main/java/com/nuvio/tv/ui/screens/addon/AddonManagerViewModel.kt" 'stremio://' "Stremio deep-link add-on URLs are normalized"
 require_match "app/src/main/java/com/nuvio/tv/ui/screens/addon/AddonManagerViewModel.kt" 'manifest.json' "Stremio manifest URLs are recognized"
+require_match "app/src/main/java/com/nuvio/tv/data/local/AddonPreferences.kt" 'https://v3-cinemeta\.strem\.io' "Safe default catalog add-on is compiled"
+require_match "app/src/main/java/com/nuvio/tv/data/local/AddonPreferences.kt" 'https://opensubtitles-v3\.strem\.io' "Safe default subtitle add-on is compiled"
+require_match "app/src/main/java/com/nuvio/tv/data/local/AddonPreferences.kt" 'ensureStreamVerseBootstrapAddons' "Empty upstream installations receive one-time add-on repair"
+require_match "app/src/main/java/com/nuvio/tv/MainActivity.kt" 'installedAddons\.orEmpty\(\)\.isEmpty\(\)' "Empty add-on state routes to setup in every experience mode"
+require_match "app/src/main/java/com/nuvio/tv/MainActivity.kt" 'addonSetupSkippedThisSession' "Add-on recovery bypass is session-only"
 require_file "app/src/main/java/com/nuvio/tv/domain/repository/CatalogRepository.kt" "Add-on catalog resources"
 require_file "app/src/main/java/com/nuvio/tv/domain/repository/MetaRepository.kt" "Add-on metadata resources"
 require_file "app/src/main/java/com/nuvio/tv/domain/repository/SubtitleRepository.kt" "Add-on subtitle resources"
@@ -211,9 +231,14 @@ require_match "app/src/main/AndroidManifest.xml" 'REQUEST_INSTALL_PACKAGES' "APK
 # StreamVerse identity and launcher contract.
 require_match "app/build.gradle.kts" 'applicationId[[:space:]]*=[[:space:]]*"com\.akahwaj\.streamverse"' "StreamVerse package ID is configured"
 require_match "app/src/main/res/values/strings.xml" '<string name="app_name">StreamVerse</string>' "StreamVerse application label is configured"
+require_match "app/src/main/res/values/strings.xml" '<string name="essential_addon_setup_title">Connect StreamVerse</string>' "Empty add-on recovery is branded and actionable"
 require_match "app/src/main/AndroidManifest.xml" 'android\.intent\.category\.LEANBACK_LAUNCHER' "Leanback launcher category is declared"
 require_match "app/src/main/AndroidManifest.xml" 'android:banner=' "TV banner resource is declared"
 require_match "app/src/main/AndroidManifest.xml" 'android:scheme="streamverse"' "StreamVerse deep-link scheme is declared"
+require_sha256 "app/src/main/res/drawable/app_logo_mark.png" "57c55c60419e35e3c848aa6f9b24d598026b9303be10a5d012832552a9ef7d56" "StreamVerse splash mark is the approved asset"
+require_sha256 "app/src/main/res/drawable/app_logo_wordmark.png" "b0557d35b45bbfccffba26187fe28d900227e81c2c146766268afea9092425a2" "StreamVerse in-app wordmark is the approved asset"
+require_sha256 "app/src/main/res/drawable-nodpi/tv_banner.png" "a13afc1b4b9815cad5d042d9d3b2d891fb716b670e4007201f04a353d639ac1d" "StreamVerse TV banner is the approved asset"
+require_sha256 "app/src/main/res/mipmap-xhdpi/banner.png" "b22865c5e9557e61384bdedb242da62f4f3e76c317f9b8d16fc517f738037e7e" "StreamVerse manifest banner is the approved asset"
 
 if (( FAILED == 0 )); then
   printf '\nAll required StreamVerse source checks passed.\n' | tee -a "$REPORT_FILE"

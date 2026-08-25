@@ -10,14 +10,14 @@ on:
       - "v*"
     paths:
       - ".github/workflows/build-streamverse.yml"
-      - "streamverse.patch"
+      - "streamverse*.patch"
       - "scripts/**"
   pull_request:
     branches:
       - main
     paths:
       - ".github/workflows/build-streamverse.yml"
-      - "streamverse.patch"
+      - "streamverse*.patch"
       - "scripts/**"
   workflow_dispatch:
     inputs:
@@ -124,8 +124,25 @@ jobs:
             exit 1
           }
 
-          git -C source apply --check "$patch_file"
-          git -C source apply "$patch_file"
+          patch_files=("$patch_file")
+          if [[ "${PATCH_PATH##*/}" == "streamverse.patch" ]]; then
+            patch_dir=$(dirname "$patch_file")
+            for companion in \
+              "$patch_dir/streamverse-branding-core.patch" \
+              "$patch_dir/streamverse-branding-tv.patch"; do
+              [[ -f "$companion" ]] || {
+                echo "::error::Required companion patch not found: ${companion##*/}"
+                exit 1
+              }
+              patch_files+=("$companion")
+            done
+          fi
+
+          for candidate in "${patch_files[@]}"; do
+            echo "Applying ${candidate##*/}"
+            git -C source apply --check "$candidate"
+            git -C source apply "$candidate"
+          done
 
       - name: Configure version and signing channel
         id: release-config
