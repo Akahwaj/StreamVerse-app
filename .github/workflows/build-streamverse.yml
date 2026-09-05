@@ -230,6 +230,7 @@ jobs:
           set -euo pipefail
           chmod +x ./gradlew
           ./gradlew :app:testFullReleaseUnitTest --stacktrace \
+            --tests 'com.nuvio.tv.core.debrid.DebridProviderAuthenticationTest' \
             --tests 'com.nuvio.tv.core.server.AddonConfigServerTest' \
             --tests 'com.nuvio.tv.core.tmdb.TmdbCollectionSourceResolverTest' \
             --tests 'com.nuvio.tv.core.tmdb.TmdbMetadataServiceTest' \
