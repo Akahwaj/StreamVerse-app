@@ -1,0 +1,39 @@
+diff --git a/app/src/main/java/com/nuvio/tv/core/debrid/DebridProvider.kt b/app/src/main/java/com/nuvio/tv/core/debrid/DebridProvider.kt
+index b186ac7..113a070 100644
+--- a/app/src/main/java/com/nuvio/tv/core/debrid/DebridProvider.kt
++++ b/app/src/main/java/com/nuvio/tv/core/debrid/DebridProvider.kt
+@@ -50,7 +50,10 @@ object DebridProviders {
+         id = PREMIUMIZE_ID,
+         displayName = "Premiumize",
+         shortName = "PM",
+-        authMethod = DebridProviderAuthMethod.DeviceCode,
++        // Premiumize officially accepts account API keys as Bearer credentials.
++        // Use the local API-key dialog so community builds do not depend on an
++        // app-specific OAuth client ID being injected at build time.
++        authMethod = DebridProviderAuthMethod.ApiKey,
+         capabilities = setOf(
+             DebridProviderCapability.ClientResolve,
+             DebridProviderCapability.LocalTorrentCacheCheck,
+diff --git a/app/src/test/java/com/nuvio/tv/core/debrid/DebridProviderAuthenticationTest.kt b/app/src/test/java/com/nuvio/tv/core/debrid/DebridProviderAuthenticationTest.kt
+new file mode 100644
+index 0000000..89fa0c5
+--- /dev/null
++++ b/app/src/test/java/com/nuvio/tv/core/debrid/DebridProviderAuthenticationTest.kt
+@@ -0,0 +1,17 @@
++package com.nuvio.tv.core.debrid
++
++import org.junit.Assert.assertEquals
++import org.junit.Test
++
++class DebridProviderAuthenticationTest {
++
++    @Test
++    fun `torbox keeps device-code authorization`() {
++        assertEquals(DebridProviderAuthMethod.DeviceCode, DebridProviders.Torbox.authMethod)
++    }
++
++    @Test
++    fun `premiumize uses locally validated API key authorization`() {
++        assertEquals(DebridProviderAuthMethod.ApiKey, DebridProviders.Premiumize.authMethod)
++    }
++}
