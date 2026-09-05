@@ -1,4 +1,4 @@
-From 1b7e7171b8d6d8a7ae1a2b1b94c345ac8b5144d5 Mon Sep 17 00:00:00 2001
+From 612ec4be6f067662de78ee3d22c9f347e42ad75b Mon Sep 17 00:00:00 2001
 From: Codex <codex@openai.com>
 Date: Sat, 5 Sep 2026 19:12:50 -0400
 Subject: [PATCH] feat: add complete community directory and Live TV hub
@@ -68,7 +68,7 @@ index 67da08a..f95b579 100644
                                  add(
                                      DrawerItem(
 diff --git a/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt b/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt
-index 81bb354..e4487db 100644
+index 81bb354..72fc932 100644
 --- a/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt
 +++ b/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt
 @@ -92,8 +92,12 @@ ${tabButtons}
@@ -186,7 +186,7 @@ index 81bb354..e4487db 100644
 +    renderCommunityAddons(communityItems);
 +    if (communityItems.length > 0) {
 +      setCommunityStatus(
-+        '${context.getString(R.string.web_community_loaded).replace("'", "\\'")}'.replace('%1$d', communityItems.length),
++        '${context.getString(R.string.web_community_loaded).replace("'", "\\'")}'.replace('%1${'$'}d', communityItems.length),
 +        false
 +      );
 +    }
