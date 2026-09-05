@@ -130,7 +130,8 @@ jobs:
             for companion in \
               "$patch_dir/streamverse-branding-core.patch" \
               "$patch_dir/streamverse-branding-tv.patch" \
-              "$patch_dir/streamverse-premiumize-api-key.patch"; do
+              "$patch_dir/streamverse-premiumize-api-key.patch" \
+              "$patch_dir/streamverse-community-live-tv.patch"; do
               [[ -f "$companion" ]] || {
                 echo "::error::Required companion patch not found: ${companion##*/}"
                 exit 1
@@ -231,6 +232,7 @@ jobs:
           chmod +x ./gradlew
           ./gradlew :app:testFullReleaseUnitTest --stacktrace \
             --tests 'com.nuvio.tv.core.debrid.DebridProviderAuthenticationTest' \
+            --tests 'com.nuvio.tv.ui.screens.livetv.LiveTvCatalogTest' \
             --tests 'com.nuvio.tv.core.server.AddonConfigServerTest' \
             --tests 'com.nuvio.tv.core.tmdb.TmdbCollectionSourceResolverTest' \
             --tests 'com.nuvio.tv.core.tmdb.TmdbMetadataServiceTest' \
