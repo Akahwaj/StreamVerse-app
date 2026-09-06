@@ -21,7 +21,8 @@ index dcb732d..8033ef0 100644
  import android.content.Intent
  import android.net.Uri
  import androidx.activity.ComponentActivity
-@@ -21,8 +23,12 @@ import androidx.compose.foundation.verticalScroll
+@@ -21,8 +23,13 @@ import androidx.compose.foundation.verticalScroll
++import androidx.compose.foundation.layout.Row
  import androidx.compose.material.icons.Icons
  import androidx.compose.material.icons.filled.ChevronRight
  import androidx.compose.material.icons.filled.OpenInNew
