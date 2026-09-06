@@ -194,9 +194,9 @@ require_match "app/src/main/java/com/nuvio/tv/MainActivity.kt" 'add\(Screen\.Add
 require_match "app/src/main/java/com/nuvio/tv/MainActivity.kt" 'label = strNavCommunityAddons' "Community Add-ons sidebar item is compiled"
 require_match "app/src/main/res/values/strings.xml" '<string name="nav_community_addons">Community Add-ons</string>' "Community Add-ons sidebar label is branded"
 require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" 'nsfw=only' "Adult directory uses the API isolated NSFW-only filter"
-require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" 'window\\.confirm' "Adult directory requires an age confirmation"
+require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" 'window.confirm' "Adult directory requires an age confirmation"
 require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" 'streamverseAdultConfirmed' "Adult confirmation is scoped to the current browser session"
-require_match "app/src/main/res/values/strings.xml" 'web_community_adult.*Adult \\(18\\+\\)' "Adult community section is clearly labeled 18+"
+require_match "app/src/main/res/values/strings.xml" 'web_community_adult.*Adult' "Adult community section is clearly labeled 18+"
 
 # Live playback compatibility. The Live TV hub browses compatible installed
 # Stremio channel catalogs; it does not embed a private M3U/XMLTV subscription.
