@@ -127,10 +127,7 @@ diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strin
 index ed43903..9cef0d3 100644
 --- a/app/src/main/res/values/strings.xml
 +++ b/app/src/main/res/values/strings.xml
-@@ -360,6 +360,11 @@
-     <string name="about_update_banner_subtitle">Show a banner when a new version is available</string>
-     <string name="about_check_updates">Check for updates</string>
-     <string name="about_check_updates_subtitle">Download latest release</string>
+@@ -363,3 +363,8 @@
 +    <string name="about_restart_app">Restart StreamVerse</string>
 +    <string name="about_restart_app_subtitle">Reload the app, catalogs, add-ons, and connected services</string>
 +    <string name="about_restart_confirm_title">Restart StreamVerse?</string>
@@ -141,4 +138,3 @@ index ed43903..9cef0d3 100644
      <string name="support_nuvio_name">Support Nuvio</string>
 -- 
 2.51.1
-
