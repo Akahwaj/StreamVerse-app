@@ -133,7 +133,8 @@ jobs:
               "$patch_dir/streamverse-premiumize-api-key.patch" \
               "$patch_dir/streamverse-community-live-tv.patch" \
               "$patch_dir/streamverse-restart-settings.patch" \
-              "$patch_dir/streamverse-community-sidebar.patch"; do
+              "$patch_dir/streamverse-community-sidebar.patch" \
+              "$patch_dir/streamverse-adult-addons-gate.patch"; do
               [[ -f "$companion" ]] || {
                 echo "::error::Required companion patch not found: ${companion##*/}"
                 exit 1
