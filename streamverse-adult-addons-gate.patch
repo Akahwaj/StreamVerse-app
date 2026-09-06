@@ -1,4 +1,4 @@
-From b311a95a0d048b4e6728eb628d5b7e8eff458912 Mon Sep 17 00:00:00 2001
+From 077d4479ddce81d396825583ad8a6436a30210ac Mon Sep 17 00:00:00 2001
 From: StreamVerse Build <build@streamverse.local>
 Date: Sun, 6 Sep 2026 14:35:13 -0400
 Subject: [PATCH] Add age-gated adult community add-ons filter
@@ -9,7 +9,7 @@ Subject: [PATCH] Add age-gated adult community add-ons filter
  2 files changed, 22 insertions(+), 3 deletions(-)
 
 diff --git a/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt b/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt
-index 72fc932..5142296 100644
+index 72fc932..2749bf3 100644
 --- a/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt
 +++ b/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt
 @@ -98,6 +98,7 @@ ${tabButtons}
@@ -46,8 +46,8 @@ index 72fc932..5142296 100644
      var hasNextPage = true;
      while (hasNextPage) {
 -      var endpoint = COMMUNITY_ADDONS_API + '/addons?limit=100&page=' + page + '&sort_by=stars&order=desc&nsfw=exclude';
-+      var nsfwMode = effectiveMode === 'adult' ? 'only' : 'exclude';
-+      var endpoint = COMMUNITY_ADDONS_API + '/addons?limit=100&page=' + page + '&sort_by=stars&order=desc&nsfw=' + nsfwMode;
++      var nsfwQuery = effectiveMode === 'adult' ? '&nsfw=only' : '&nsfw=exclude';
++      var endpoint = COMMUNITY_ADDONS_API + '/addons?limit=100&page=' + page + '&sort_by=stars&order=desc' + nsfwQuery;
        if (query) endpoint += '&search=' + encodeURIComponent(query);
        var response = await fetchWithTimeout(endpoint, { headers: { 'Accept': 'application/json' } }, 15000);
        if (!response.ok) throw new Error('Community directory HTTP ' + response.status);
