@@ -127,7 +127,7 @@ diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strin
 index ed43903..9cef0d3 100644
 --- a/app/src/main/res/values/strings.xml
 +++ b/app/src/main/res/values/strings.xml
-@@ -363,3 +363,8 @@
+@@ -363,2 +363,7 @@
 +    <string name="about_restart_app">Restart StreamVerse</string>
 +    <string name="about_restart_app_subtitle">Reload the app, catalogs, add-ons, and connected services</string>
 +    <string name="about_restart_confirm_title">Restart StreamVerse?</string>
@@ -135,6 +135,5 @@ index ed43903..9cef0d3 100644
 +    <string name="about_restart_now">Restart now</string>
      <string name="about_privacy_policy">Privacy Policy</string>
      <string name="about_privacy_policy_subtitle">View our privacy policy</string>
-     <string name="support_nuvio_name">Support Nuvio</string>
 -- 
 2.51.1
