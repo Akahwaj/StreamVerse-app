@@ -190,6 +190,9 @@ require_file "app/src/test/java/com/nuvio/tv/ui/screens/livetv/LiveTvCatalogTest
 require_match "app/src/main/java/com/nuvio/tv/ui/screens/settings/AboutScreen.kt" 'Restart StreamVerse|about_restart_app' "Restart StreamVerse action is available in Settings"
 require_match "app/src/main/java/com/nuvio/tv/ui/screens/settings/AboutScreen.kt" 'FLAG_ACTIVITY_CLEAR_TASK' "Restart action clears the existing activity stack"
 require_match "app/src/main/java/com/nuvio/tv/ui/screens/settings/AboutScreen.kt" 'showRestartConfirmation' "Restart action requires confirmation"
+require_match "app/src/main/java/com/nuvio/tv/MainActivity.kt" 'add\(Screen\.AddonManager\.route\)' "Community Add-ons manager is a sidebar root route"
+require_match "app/src/main/java/com/nuvio/tv/MainActivity.kt" 'label = strNavCommunityAddons' "Community Add-ons sidebar item is compiled"
+require_match "app/src/main/res/values/strings.xml" '<string name="nav_community_addons">Community Add-ons</string>' "Community Add-ons sidebar label is branded"
 
 # Live playback compatibility. The Live TV hub browses compatible installed
 # Stremio channel catalogs; it does not embed a private M3U/XMLTV subscription.
