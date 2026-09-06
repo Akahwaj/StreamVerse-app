@@ -187,6 +187,9 @@ require_file "app/src/main/java/com/nuvio/tv/ui/screens/livetv/LiveTvScreen.kt" 
 require_file "app/src/main/java/com/nuvio/tv/ui/screens/livetv/LiveTvViewModel.kt" "Installed Live TV catalog resolver"
 require_match "app/src/main/java/com/nuvio/tv/MainActivity.kt" 'Screen\.LiveTv\.route' "Live TV is present in the primary TV navigation"
 require_file "app/src/test/java/com/nuvio/tv/ui/screens/livetv/LiveTvCatalogTest.kt" "Live TV catalog classification tests"
+require_match "app/src/main/java/com/nuvio/tv/ui/screens/settings/AboutScreen.kt" \'Restart StreamVerse|about_restart_app\' "Restart StreamVerse action is available in Settings"
+require_match "app/src/main/java/com/nuvio/tv/ui/screens/settings/AboutScreen.kt" \'FLAG_ACTIVITY_CLEAR_TASK\' "Restart action clears the existing activity stack"
+require_match "app/src/main/java/com/nuvio/tv/ui/screens/settings/AboutScreen.kt" \'showRestartConfirmation\' "Restart action requires confirmation"
 
 # Live playback compatibility. The Live TV hub browses compatible installed
 # Stremio channel catalogs; it does not embed a private M3U/XMLTV subscription.
