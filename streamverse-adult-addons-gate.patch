@@ -1,0 +1,95 @@
+From 077d4479ddce81d396825583ad8a6436a30210ac Mon Sep 17 00:00:00 2001
+From: StreamVerse Build <build@streamverse.local>
+Date: Sun, 6 Sep 2026 14:35:13 -0400
+Subject: [PATCH] Add age-gated adult community add-ons filter
+
+---
+ .../com/nuvio/tv/core/server/AddonWebPage.kt  | 23 ++++++++++++++++---
+ app/src/main/res/values/strings.xml           |  2 ++
+ 2 files changed, 22 insertions(+), 3 deletions(-)
+
+diff --git a/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt b/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt
+index 72fc932..2749bf3 100644
+--- a/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt
++++ b/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt
+@@ -98,6 +98,7 @@ ${tabButtons}
+       <div class="community-quick-filters">
+         <button class="btn btn-toggle" type="button" onclick="loadCommunityAddons('all')">${context.getString(R.string.web_community_all)}</button>
+         <button class="btn btn-toggle" type="button" onclick="loadCommunityAddons('live-tv')">${context.getString(R.string.web_community_live_tv)}</button>
++        <button class="btn btn-toggle disabled" type="button" onclick="loadAdultCommunityAddons()">${context.getString(R.string.web_community_adult)}</button>
+       </div>
+       <div class="community-status" id="communityStatus"></div>
+       <ul class="addon-list" id="communityAddonList"></ul>
+@@ -1207,6 +1208,7 @@ var pollStartTime = 0;
+ var POLL_TIMEOUT = 120000;
+ var POLL_INTERVAL = 1500;
+ var COMMUNITY_ADDONS_API = 'https://stremio-addons.net/api/v0';
++var communityMode = 'all';
+ 
+ var i18n = {
+   newCollection: '${context.getString(R.string.collections_new).replace("'", "\\'")}',
+@@ -2077,7 +2079,11 @@ function renderCommunityAddons(items) {
+ 
+ async function loadCommunityAddons(mode) {
+   var input = document.getElementById('communitySearch');
+-  if (input && (mode === 'all' || mode === 'live-tv')) input.value = '';
++  if (mode === 'all' || mode === 'live-tv' || mode === 'adult') {
++    communityMode = mode;
++    if (input) input.value = '';
++  }
++  var effectiveMode = mode === 'search' ? communityMode : mode;
+   var query = input ? input.value.trim() : '';
+   setCommunityStatus('${context.getString(R.string.web_community_loading).replace("'", "\\'")}', false);
+   try {
+@@ -2085,7 +2091,8 @@ async function loadCommunityAddons(mode) {
+     var allItems = [];
+     var hasNextPage = true;
+     while (hasNextPage) {
+-      var endpoint = COMMUNITY_ADDONS_API + '/addons?limit=100&page=' + page + '&sort_by=stars&order=desc&nsfw=exclude';
++      var nsfwQuery = effectiveMode === 'adult' ? '&nsfw=only' : '&nsfw=exclude';
++      var endpoint = COMMUNITY_ADDONS_API + '/addons?limit=100&page=' + page + '&sort_by=stars&order=desc' + nsfwQuery;
+       if (query) endpoint += '&search=' + encodeURIComponent(query);
+       var response = await fetchWithTimeout(endpoint, { headers: { 'Accept': 'application/json' } }, 15000);
+       if (!response.ok) throw new Error('Community directory HTTP ' + response.status);
+@@ -2097,7 +2104,7 @@ async function loadCommunityAddons(mode) {
+     }
+ 
+     var communityItems = flattenCommunityAddons(allItems);
+-    if (mode === 'live-tv') communityItems = communityItems.filter(isLiveTvCommunityAddon);
++    if (effectiveMode === 'live-tv') communityItems = communityItems.filter(isLiveTvCommunityAddon);
+     renderCommunityAddons(communityItems);
+     if (communityItems.length > 0) {
+       setCommunityStatus(
+@@ -2111,6 +2118,16 @@ async function loadCommunityAddons(mode) {
+   }
+ }
+ 
++function loadAdultCommunityAddons() {
++  var ageConfirmed = sessionStorage.getItem('streamverseAdultConfirmed') === 'true';
++  if (!ageConfirmed) {
++    ageConfirmed = window.confirm('${context.getString(R.string.web_community_adult_confirm).replace("'", "\\'")}');
++    if (!ageConfirmed) return;
++    sessionStorage.setItem('streamverseAdultConfirmed', 'true');
++  }
++  loadCommunityAddons('adult');
++}
++
+ function installCommunityAddon(encodedManifestUrl) {
+   var manifestUrl = safeCommunityHttpsUrl(decodeURIComponent(encodedManifestUrl || ''));
+   if (!manifestUrl) return;
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 79b7cf5..865ce52 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -20,6 +20,8 @@
+     <string name="web_community_search">Search</string>
+     <string name="web_community_all">All Add-ons</string>
+     <string name="web_community_live_tv">Live TV</string>
++    <string name="web_community_adult">Adult (18+)</string>
++    <string name="web_community_adult_confirm">This section lists adult add-ons. Confirm that you are 18 or older to continue.</string>
+     <string name="web_community_loaded">%1$d community add-ons loaded</string>
+     <string name="web_community_search_placeholder">Search approved add-ons</string>
+     <string name="web_community_browse">Browse</string>
+-- 
+2.51.1
+

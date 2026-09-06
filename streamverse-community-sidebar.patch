@@ -1,0 +1,75 @@
+From 46dbd5c646eed789755ab03656936b7eb9158a6c Mon Sep 17 00:00:00 2001
+From: StreamVerse Build <build@streamverse.local>
+Date: Sun, 6 Sep 2026 14:32:56 -0400
+Subject: [PATCH] Add Community Add-ons to TV sidebar
+
+---
+ app/src/main/java/com/nuvio/tv/MainActivity.kt | 11 +++++++++++
+ app/src/main/res/values/strings.xml            |  1 +
+ 2 files changed, 12 insertions(+)
+
+diff --git a/app/src/main/java/com/nuvio/tv/MainActivity.kt b/app/src/main/java/com/nuvio/tv/MainActivity.kt
+index f95b579..9059408 100644
+--- a/app/src/main/java/com/nuvio/tv/MainActivity.kt
++++ b/app/src/main/java/com/nuvio/tv/MainActivity.kt
+@@ -46,6 +46,7 @@ import androidx.compose.foundation.shape.CircleShape
+ import androidx.compose.foundation.shape.RoundedCornerShape
+ import androidx.compose.material.icons.Icons
+ import androidx.compose.material.icons.filled.Explore
++import androidx.compose.material.icons.filled.Extension
+ import androidx.compose.material.icons.filled.Home
+ import androidx.compose.material.icons.filled.LiveTv
+ import androidx.compose.material.icons.filled.Search
+@@ -776,6 +777,7 @@ class MainActivity : ComponentActivity() {
+                         buildSet {
+                             add(Screen.Home.route)
+                             add(Screen.LiveTv.route)
++                            add(Screen.AddonManager.route)
+                             add(Screen.Search.route)
+                             add(Screen.Library.route)
+                             add(Screen.Settings.route)
+@@ -787,6 +789,7 @@ class MainActivity : ComponentActivity() {
+ 
+                     val strNavHome = stringResource(R.string.nav_home)
+                     val strNavLiveTv = stringResource(R.string.nav_live_tv)
++                    val strNavCommunityAddons = stringResource(R.string.nav_community_addons)
+                     val strNavDiscover = stringResource(R.string.nav_discover)
+                     val strNavSearch = stringResource(R.string.nav_search)
+                     val strNavLibrary = stringResource(R.string.nav_library)
+@@ -794,6 +797,7 @@ class MainActivity : ComponentActivity() {
+                     val drawerItems = remember(
+                         strNavHome,
+                         strNavLiveTv,
++                        strNavCommunityAddons,
+                         strNavDiscover,
+                         strNavSearch,
+                         strNavLibrary,
+@@ -815,6 +819,13 @@ class MainActivity : ComponentActivity() {
+                                     icon = Icons.Default.LiveTv
+                                 )
+                             )
++                            add(
++                                DrawerItem(
++                                    route = Screen.AddonManager.route,
++                                    label = strNavCommunityAddons,
++                                    icon = Icons.Default.Extension
++                                )
++                            )
+                             if (discoverLocation == DiscoverLocation.IN_SIDEBAR) {
+                                 add(
+                                     DrawerItem(
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index e855e40..79b7cf5 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -2143,6 +2143,7 @@
+     <!-- SidebarNavigation / MainActivity -->
+     <string name="nav_home">Home</string>
+     <string name="nav_live_tv">Live TV</string>
++    <string name="nav_community_addons">Community Add-ons</string>
+     <string name="live_tv_title">Live TV</string>
+     <string name="live_tv_subtitle">Channels supplied by your installed Stremio community add-ons</string>
+     <string name="live_tv_empty_title">No Live TV add-on installed</string>
+-- 
+2.51.1
+
