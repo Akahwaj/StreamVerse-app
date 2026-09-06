@@ -1,0 +1,658 @@
+From 612ec4be6f067662de78ee3d22c9f347e42ad75b Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sat, 5 Sep 2026 19:12:50 -0400
+Subject: [PATCH] feat: add complete community directory and Live TV hub
+
+---
+ .../main/java/com/nuvio/tv/MainActivity.kt    |  11 ++
+ .../com/nuvio/tv/core/server/AddonWebPage.kt  |  93 ++++++++--
+ .../nuvio/tv/ui/navigation/NuvioNavHost.kt    |  10 ++
+ .../java/com/nuvio/tv/ui/navigation/Screen.kt |   1 +
+ .../tv/ui/screens/addon/AddonManagerScreen.kt |  68 +++++++
+ .../tv/ui/screens/livetv/LiveTvScreen.kt      | 167 ++++++++++++++++++
+ .../tv/ui/screens/livetv/LiveTvViewModel.kt   |  59 +++++++
+ app/src/main/res/values/strings.xml           |  14 +-
+ .../tv/ui/screens/livetv/LiveTvCatalogTest.kt |  40 +++++
+ 9 files changed, 452 insertions(+), 11 deletions(-)
+ create mode 100644 app/src/main/java/com/nuvio/tv/ui/screens/livetv/LiveTvScreen.kt
+ create mode 100644 app/src/main/java/com/nuvio/tv/ui/screens/livetv/LiveTvViewModel.kt
+ create mode 100644 app/src/test/java/com/nuvio/tv/ui/screens/livetv/LiveTvCatalogTest.kt
+
+diff --git a/app/src/main/java/com/nuvio/tv/MainActivity.kt b/app/src/main/java/com/nuvio/tv/MainActivity.kt
+index 67da08a..f95b579 100644
+--- a/app/src/main/java/com/nuvio/tv/MainActivity.kt
++++ b/app/src/main/java/com/nuvio/tv/MainActivity.kt
+@@ -47,6 +47,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
+ import androidx.compose.material.icons.Icons
+ import androidx.compose.material.icons.filled.Explore
+ import androidx.compose.material.icons.filled.Home
++import androidx.compose.material.icons.filled.LiveTv
+ import androidx.compose.material.icons.filled.Search
+ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.CompositionLocalProvider
+@@ -774,6 +775,7 @@ class MainActivity : ComponentActivity() {
+                     val rootRoutes = remember(discoverLocation) {
+                         buildSet {
+                             add(Screen.Home.route)
++                            add(Screen.LiveTv.route)
+                             add(Screen.Search.route)
+                             add(Screen.Library.route)
+                             add(Screen.Settings.route)
+@@ -784,12 +786,14 @@ class MainActivity : ComponentActivity() {
+                     }
+ 
+                     val strNavHome = stringResource(R.string.nav_home)
++                    val strNavLiveTv = stringResource(R.string.nav_live_tv)
+                     val strNavDiscover = stringResource(R.string.nav_discover)
+                     val strNavSearch = stringResource(R.string.nav_search)
+                     val strNavLibrary = stringResource(R.string.nav_library)
+                     val strNavSettings = stringResource(R.string.nav_settings)
+                     val drawerItems = remember(
+                         strNavHome,
++                        strNavLiveTv,
+                         strNavDiscover,
+                         strNavSearch,
+                         strNavLibrary,
+@@ -804,6 +808,13 @@ class MainActivity : ComponentActivity() {
+                                     icon = Icons.Default.Home
+                                 )
+                             )
++                            add(
++                                DrawerItem(
++                                    route = Screen.LiveTv.route,
++                                    label = strNavLiveTv,
++                                    icon = Icons.Default.LiveTv
++                                )
++                            )
+                             if (discoverLocation == DiscoverLocation.IN_SIDEBAR) {
+                                 add(
+                                     DrawerItem(
+diff --git a/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt b/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt
+index 81bb354..72fc932 100644
+--- a/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt
++++ b/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt
+@@ -92,8 +92,12 @@ ${tabButtons}
+       <div class="section-label">${context.getString(R.string.web_community_addons)}</div>
+       <p class="community-description">${context.getString(R.string.web_community_addons_description)}</p>
+       <div class="add-row">
+-        <input type="search" id="communitySearch" value="Streaming Catalogs" placeholder="${context.getString(R.string.web_community_search_placeholder)}" autocomplete="off" autocapitalize="off" spellcheck="false">
+-        <button class="btn" type="button" onclick="loadCommunityAddons()">${context.getString(R.string.web_community_browse)}</button>
++        <input type="search" id="communitySearch" value="" placeholder="${context.getString(R.string.web_community_search_placeholder)}" autocomplete="off" autocapitalize="off" spellcheck="false">
++        <button class="btn" type="button" onclick="loadCommunityAddons('search')">${context.getString(R.string.web_community_search)}</button>
++      </div>
++      <div class="community-quick-filters">
++        <button class="btn btn-toggle" type="button" onclick="loadCommunityAddons('all')">${context.getString(R.string.web_community_all)}</button>
++        <button class="btn btn-toggle" type="button" onclick="loadCommunityAddons('live-tv')">${context.getString(R.string.web_community_live_tv)}</button>
+       </div>
+       <div class="community-status" id="communityStatus"></div>
+       <ul class="addon-list" id="communityAddonList"></ul>
+@@ -337,6 +341,12 @@ ${tabButtons}
+   }
+   .community-description { margin: -0.25rem 0 0.85rem; }
+   .community-status { display: none; padding: 0.75rem 0 0.25rem; }
++  .community-quick-filters {
++    display: flex;
++    flex-wrap: wrap;
++    gap: 0.55rem;
++    margin-top: 0.7rem;
++  }
+   .community-attribution {
+     display: inline-block;
+     margin-top: 0.75rem;
+@@ -1977,6 +1987,49 @@ function setCommunityStatus(message, isError) {
+   status.style.color = isError ? '#CF6679' : 'rgba(255, 255, 255, 0.55)';
+ }
+ 
++function flattenCommunityAddons(items) {
++  var result = [];
++  var seen = {};
++  (Array.isArray(items) ? items : []).forEach(function(item) {
++    [item].concat(Array.isArray(item && item.instances) ? item.instances : []).forEach(function(candidate) {
++      var url = safeCommunityHttpsUrl(candidate && candidate.manifestUrl);
++      if (!url || seen[url]) return;
++      seen[url] = true;
++      result.push(candidate);
++    });
++  });
++  return result;
++}
++
++function isLiveTvCommunityAddon(item) {
++  var manifest = item && item.manifest ? item.manifest : {};
++  var catalogs = Array.isArray(manifest.catalogs) ? manifest.catalogs : [];
++  if (catalogs.some(function(catalog) {
++    return String(catalog && catalog.type || '').toLowerCase() === 'channel';
++  })) return true;
++
++  var searchable = [
++    manifest.name,
++    manifest.description,
++    item && item.slug
++  ].concat(
++    (Array.isArray(item && item.categories) ? item.categories : []).map(function(category) {
++      return category && category.name;
++    })
++  ).concat(
++    catalogs.map(function(catalog) {
++      return [catalog && catalog.id, catalog && catalog.name, catalog && catalog.type].join(' ');
++    })
++  ).filter(Boolean).join(' ').toLowerCase();
++
++  var hasLiveMarker = /(^|\W)(live\s*tv|iptv|m3u|television|tv\s*channels?|channels?)(\W|$)/i.test(searchable);
++  var hasTvCatalog = catalogs.some(function(catalog) {
++    var type = String(catalog && catalog.type || '').toLowerCase();
++    return type === 'tv' || type === 'channel';
++  });
++  return hasLiveMarker && (hasTvCatalog || catalogs.length > 0);
++}
++
+ function renderCommunityAddons(items) {
+   var list = document.getElementById('communityAddonList');
+   if (!list) return;
+@@ -2022,17 +2075,36 @@ function renderCommunityAddons(items) {
+   });
+ }
+ 
+-async function loadCommunityAddons() {
++async function loadCommunityAddons(mode) {
+   var input = document.getElementById('communitySearch');
++  if (input && (mode === 'all' || mode === 'live-tv')) input.value = '';
+   var query = input ? input.value.trim() : '';
+   setCommunityStatus('${context.getString(R.string.web_community_loading).replace("'", "\\'")}', false);
+   try {
+-    var endpoint = COMMUNITY_ADDONS_API + '/addons?limit=25&sort_by=stars&order=desc&nsfw=exclude';
+-    if (query) endpoint += '&search=' + encodeURIComponent(query);
+-    var response = await fetchWithTimeout(endpoint, { headers: { 'Accept': 'application/json' } }, 10000);
+-    if (!response.ok) throw new Error('Community directory HTTP ' + response.status);
+-    var payload = await response.json();
+-    renderCommunityAddons(payload && payload.addons);
++    var page = 1;
++    var allItems = [];
++    var hasNextPage = true;
++    while (hasNextPage) {
++      var endpoint = COMMUNITY_ADDONS_API + '/addons?limit=100&page=' + page + '&sort_by=stars&order=desc&nsfw=exclude';
++      if (query) endpoint += '&search=' + encodeURIComponent(query);
++      var response = await fetchWithTimeout(endpoint, { headers: { 'Accept': 'application/json' } }, 15000);
++      if (!response.ok) throw new Error('Community directory HTTP ' + response.status);
++      var payload = await response.json();
++      allItems = allItems.concat(Array.isArray(payload && payload.addons) ? payload.addons : []);
++      hasNextPage = !!(payload && payload.pagination && payload.pagination.hasNextPage);
++      page += 1;
++      if (page > 50) hasNextPage = false;
++    }
++
++    var communityItems = flattenCommunityAddons(allItems);
++    if (mode === 'live-tv') communityItems = communityItems.filter(isLiveTvCommunityAddon);
++    renderCommunityAddons(communityItems);
++    if (communityItems.length > 0) {
++      setCommunityStatus(
++        '${context.getString(R.string.web_community_loaded).replace("'", "\\'")}'.replace('%1${'$'}d', communityItems.length),
++        false
++      );
++    }
+   } catch (_) {
+     renderCommunityAddons([]);
+     setCommunityStatus('${context.getString(R.string.web_community_error).replace("'", "\\'")}', true);
+@@ -3487,11 +3559,12 @@ if (addonUrlInput) {
+ var communitySearchInput = document.getElementById('communitySearch');
+ if (communitySearchInput) {
+   communitySearchInput.addEventListener('keydown', function(e) {
+-    if (e.key === 'Enter') loadCommunityAddons();
++    if (e.key === 'Enter') loadCommunityAddons('search');
+   });
+ }
+ 
+ loadState();
++loadCommunityAddons('all');
+ </script>
+ </body>
+ </html>
+diff --git a/app/src/main/java/com/nuvio/tv/ui/navigation/NuvioNavHost.kt b/app/src/main/java/com/nuvio/tv/ui/navigation/NuvioNavHost.kt
+index ce2410b..2559af6 100644
+--- a/app/src/main/java/com/nuvio/tv/ui/navigation/NuvioNavHost.kt
++++ b/app/src/main/java/com/nuvio/tv/ui/navigation/NuvioNavHost.kt
+@@ -26,6 +26,7 @@ import com.nuvio.tv.ui.screens.home.HomeScreen
+ import com.nuvio.tv.ui.screens.addon.AddonManagerScreen
+ import com.nuvio.tv.ui.screens.addon.CatalogOrderScreen
+ import com.nuvio.tv.ui.screens.library.LibraryScreen
++import com.nuvio.tv.ui.screens.livetv.LiveTvScreen
+ import com.nuvio.tv.ui.screens.player.PlayerExitReason
+ import com.nuvio.tv.ui.screens.player.PlayerScreen
+ import com.nuvio.tv.ui.screens.plugin.PluginScreen
+@@ -226,6 +227,15 @@ fun NuvioNavHost(
+             )
+         }
+ 
++        composable(Screen.LiveTv.route) {
++            LiveTvScreen(
++                onNavigateToCatalog = { catalogId, addonId, type ->
++                    navController.navigate(Screen.CatalogSeeAll.createRoute(catalogId, addonId, type))
++                },
++                onManageAddons = { navController.navigate(Screen.AddonManager.route) }
++            )
++        }
++
+         composable(
+             route = Screen.Detail.route,
+             arguments = listOf(
+diff --git a/app/src/main/java/com/nuvio/tv/ui/navigation/Screen.kt b/app/src/main/java/com/nuvio/tv/ui/navigation/Screen.kt
+index 49f1ac0..2ceef8b 100644
+--- a/app/src/main/java/com/nuvio/tv/ui/navigation/Screen.kt
++++ b/app/src/main/java/com/nuvio/tv/ui/navigation/Screen.kt
+@@ -5,6 +5,7 @@ import java.net.URLEncoder
+ 
+ sealed class Screen(val route: String) {
+     data object Home : Screen("home")
++    data object LiveTv : Screen("live_tv")
+     data object Detail : Screen("detail/{itemId}/{itemType}?addonBaseUrl={addonBaseUrl}&returnFocusSeason={returnFocusSeason}&returnFocusEpisode={returnFocusEpisode}&returnToHomeOnBack={returnToHomeOnBack}&heroBackdropUrl={heroBackdropUrl}") {
+         private fun encode(value: String): String =
+             URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+diff --git a/app/src/main/java/com/nuvio/tv/ui/screens/addon/AddonManagerScreen.kt b/app/src/main/java/com/nuvio/tv/ui/screens/addon/AddonManagerScreen.kt
+index 0ed0363..833a1db 100644
+--- a/app/src/main/java/com/nuvio/tv/ui/screens/addon/AddonManagerScreen.kt
++++ b/app/src/main/java/com/nuvio/tv/ui/screens/addon/AddonManagerScreen.kt
+@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.PhoneAndroid
+ import androidx.compose.material.icons.filled.QrCode2
+ import androidx.compose.material.icons.filled.Reorder
+ import androidx.compose.material.icons.filled.Refresh
++import androidx.compose.material.icons.filled.LiveTv
+ import androidx.compose.material3.Card
+ import androidx.compose.material3.CardDefaults
+ import androidx.compose.ui.graphics.SolidColor
+@@ -395,6 +396,14 @@ fun AddonManagerScreen(
+                 )
+             }
+ 
++            if (!viewModel.isReadOnly) {
++                item {
++                    CommunityAddonsEntryCard(
++                        onClick = { viewModel.startQrMode(webConfigMode) }
++                    )
++                }
++            }
++
+             if (!viewModel.isReadOnly && !isEssential && hasHomeVisibleCatalogs) {
+                 item {
+                     CatalogOrderEntryCard(onClick = onNavigateToCatalogOrder)
+@@ -627,6 +636,65 @@ private fun ManageFromPhoneCard(
+     }
+ }
+ 
++@OptIn(ExperimentalTvMaterial3Api::class)
++@Composable
++private fun CommunityAddonsEntryCard(onClick: () -> Unit) {
++    var isFocused by remember { mutableStateOf(false) }
++
++    Surface(
++        onClick = onClick,
++        modifier = Modifier
++            .fillMaxWidth()
++            .onFocusChanged { isFocused = it.isFocused },
++        colors = ClickableSurfaceDefaults.colors(
++            containerColor = NuvioTheme.colors.BackgroundCard,
++            focusedContainerColor = NuvioTheme.colors.FocusBackground
++        ),
++        border = ClickableSurfaceDefaults.border(
++            focusedBorder = Border(
++                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
++                shape = RoundedCornerShape(18.dp)
++            )
++        ),
++        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(18.dp)),
++        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.01f)
++    ) {
++        Row(
++            modifier = Modifier.fillMaxWidth().padding(20.dp),
++            horizontalArrangement = Arrangement.SpaceBetween,
++            verticalAlignment = Alignment.CenterVertically
++        ) {
++            Row(verticalAlignment = Alignment.CenterVertically) {
++                Icon(
++                    imageVector = Icons.Default.LiveTv,
++                    contentDescription = null,
++                    modifier = Modifier.size(28.dp),
++                    tint = if (isFocused) NuvioTheme.colors.Secondary else NuvioTheme.colors.TextSecondary
++                )
++                Spacer(modifier = Modifier.width(NuvioTheme.spacing.lg))
++                Column {
++                    Text(
++                        text = stringResource(R.string.addon_community_title),
++                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
++                        color = NuvioTheme.colors.TextPrimary
++                    )
++                    Text(
++                        text = stringResource(R.string.addon_community_subtitle),
++                        style = MaterialTheme.typography.bodySmall,
++                        color = NuvioTheme.colors.TextSecondary
++                    )
++                }
++            }
++            Icon(
++                imageVector = Icons.Default.ChevronRight,
++                contentDescription = null,
++                modifier = Modifier.size(20.dp),
++                tint = NuvioTheme.colors.TextSecondary
++            )
++        }
++    }
++}
++
+ @OptIn(ExperimentalTvMaterial3Api::class)
+ @Composable
+ private fun CatalogOrderEntryCard(onClick: () -> Unit) {
+diff --git a/app/src/main/java/com/nuvio/tv/ui/screens/livetv/LiveTvScreen.kt b/app/src/main/java/com/nuvio/tv/ui/screens/livetv/LiveTvScreen.kt
+new file mode 100644
+index 0000000..10f755e
+--- /dev/null
++++ b/app/src/main/java/com/nuvio/tv/ui/screens/livetv/LiveTvScreen.kt
+@@ -0,0 +1,167 @@
++package com.nuvio.tv.ui.screens.livetv
++
++import androidx.compose.foundation.BorderStroke
++import androidx.compose.foundation.layout.Arrangement
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.PaddingValues
++import androidx.compose.foundation.layout.Row
++import androidx.compose.foundation.layout.Spacer
++import androidx.compose.foundation.layout.fillMaxSize
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.layout.height
++import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.layout.size
++import androidx.compose.foundation.layout.width
++import androidx.compose.foundation.lazy.LazyColumn
++import androidx.compose.foundation.lazy.items
++import androidx.compose.material.icons.Icons
++import androidx.compose.material.icons.filled.ChevronRight
++import androidx.compose.material.icons.filled.LiveTv
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.collectAsState
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.setValue
++import androidx.compose.ui.Alignment
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.focus.onFocusChanged
++import androidx.compose.ui.res.stringResource
++import androidx.compose.ui.text.font.FontWeight
++import androidx.compose.ui.unit.dp
++import androidx.hilt.navigation.compose.hiltViewModel
++import androidx.tv.material3.Border
++import androidx.tv.material3.Button
++import androidx.tv.material3.ButtonDefaults
++import androidx.tv.material3.ClickableSurfaceDefaults
++import androidx.tv.material3.ExperimentalTvMaterial3Api
++import androidx.tv.material3.Icon
++import androidx.tv.material3.MaterialTheme
++import androidx.tv.material3.Surface
++import androidx.tv.material3.Text
++import com.nuvio.tv.R
++import com.nuvio.tv.ui.theme.NuvioTheme
++
++@OptIn(ExperimentalTvMaterial3Api::class)
++@Composable
++fun LiveTvScreen(
++    viewModel: LiveTvViewModel = hiltViewModel(),
++    onNavigateToCatalog: (catalogId: String, addonId: String, type: String) -> Unit,
++    onManageAddons: () -> Unit
++) {
++    val catalogs by viewModel.catalogs.collectAsState()
++    LazyColumn(
++        modifier = Modifier.fillMaxSize(),
++        contentPadding = PaddingValues(horizontal = 48.dp, vertical = 32.dp),
++        verticalArrangement = Arrangement.spacedBy(16.dp)
++    ) {
++        item {
++            Column {
++                Text(
++                    text = stringResource(R.string.live_tv_title),
++                    style = MaterialTheme.typography.headlineLarge,
++                    color = NuvioTheme.colors.TextPrimary
++                )
++                Text(
++                    text = stringResource(R.string.live_tv_subtitle),
++                    style = MaterialTheme.typography.bodyMedium,
++                    color = NuvioTheme.colors.TextSecondary
++                )
++            }
++        }
++
++        item {
++            Button(
++                onClick = onManageAddons,
++                colors = ButtonDefaults.colors(
++                    containerColor = NuvioTheme.colors.BackgroundCard,
++                    contentColor = NuvioTheme.colors.TextPrimary,
++                    focusedContainerColor = NuvioTheme.colors.FocusBackground,
++                    focusedContentColor = NuvioTheme.colors.Primary
++                )
++            ) {
++                Icon(Icons.Default.LiveTv, contentDescription = null)
++                Spacer(modifier = Modifier.width(NuvioTheme.spacing.sm))
++                Text(stringResource(R.string.live_tv_manage_addons))
++            }
++        }
++
++        if (catalogs.isEmpty()) {
++            item {
++                Column(modifier = Modifier.padding(top = 28.dp)) {
++                    Text(
++                        text = stringResource(R.string.live_tv_empty_title),
++                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
++                        color = NuvioTheme.colors.TextPrimary
++                    )
++                    Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
++                    Text(
++                        text = stringResource(R.string.live_tv_empty_subtitle),
++                        style = MaterialTheme.typography.bodyLarge,
++                        color = NuvioTheme.colors.TextSecondary
++                    )
++                }
++            }
++        } else {
++            items(
++                items = catalogs,
++                key = { "${it.addonId}:${it.type}:${it.catalogId}" }
++            ) { catalog ->
++                LiveTvCatalogCard(
++                    catalog = catalog,
++                    onClick = { onNavigateToCatalog(catalog.catalogId, catalog.addonId, catalog.type) }
++                )
++            }
++        }
++    }
++}
++
++@OptIn(ExperimentalTvMaterial3Api::class)
++@Composable
++private fun LiveTvCatalogCard(catalog: LiveTvCatalogEntry, onClick: () -> Unit) {
++    var focused by remember { mutableStateOf(false) }
++    Surface(
++        onClick = onClick,
++        modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
++        colors = ClickableSurfaceDefaults.colors(
++            containerColor = NuvioTheme.colors.BackgroundCard,
++            focusedContainerColor = NuvioTheme.colors.FocusBackground
++        ),
++        border = ClickableSurfaceDefaults.border(
++            focusedBorder = Border(
++                border = BorderStroke(NuvioTheme.spacing.xxs, NuvioTheme.colors.Primary),
++                shape = NuvioTheme.shapes.backdropCard
++            )
++        ),
++        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.01f)
++    ) {
++        Row(
++            modifier = Modifier.fillMaxWidth().padding(20.dp),
++            verticalAlignment = Alignment.CenterVertically,
++            horizontalArrangement = Arrangement.SpaceBetween
++        ) {
++            Row(verticalAlignment = Alignment.CenterVertically) {
++                Icon(
++                    imageVector = Icons.Default.LiveTv,
++                    contentDescription = null,
++                    modifier = Modifier.size(28.dp),
++                    tint = if (focused) NuvioTheme.colors.Primary else NuvioTheme.colors.TextSecondary
++                )
++                Spacer(modifier = Modifier.width(NuvioTheme.spacing.lg))
++                Column {
++                    Text(
++                        text = catalog.catalogName,
++                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
++                        color = NuvioTheme.colors.TextPrimary
++                    )
++                    Text(
++                        text = catalog.addonName,
++                        style = MaterialTheme.typography.bodySmall,
++                        color = NuvioTheme.colors.TextSecondary
++                    )
++                }
++            }
++            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = NuvioTheme.colors.TextSecondary)
++        }
++    }
++}
+diff --git a/app/src/main/java/com/nuvio/tv/ui/screens/livetv/LiveTvViewModel.kt b/app/src/main/java/com/nuvio/tv/ui/screens/livetv/LiveTvViewModel.kt
+new file mode 100644
+index 0000000..3af09b3
+--- /dev/null
++++ b/app/src/main/java/com/nuvio/tv/ui/screens/livetv/LiveTvViewModel.kt
+@@ -0,0 +1,59 @@
++package com.nuvio.tv.ui.screens.livetv
++
++import androidx.lifecycle.ViewModel
++import androidx.lifecycle.viewModelScope
++import com.nuvio.tv.domain.model.Addon
++import com.nuvio.tv.domain.model.CatalogDescriptor
++import com.nuvio.tv.domain.repository.AddonRepository
++import dagger.hilt.android.lifecycle.HiltViewModel
++import kotlinx.coroutines.flow.SharingStarted
++import kotlinx.coroutines.flow.map
++import kotlinx.coroutines.flow.stateIn
++import javax.inject.Inject
++
++data class LiveTvCatalogEntry(
++    val addonId: String,
++    val addonName: String,
++    val catalogId: String,
++    val catalogName: String,
++    val type: String
++)
++
++internal fun isLiveTvCatalog(addon: Addon, catalog: CatalogDescriptor): Boolean {
++    val type = catalog.apiType.trim().lowercase()
++    if (type == "channel") return true
++    val searchable = listOf(addon.displayName, addon.name, addon.description, catalog.id, catalog.name)
++        .filterNotNull()
++        .joinToString(" ")
++        .lowercase()
++    val hasLiveMarker = listOf("live tv", "livetv", "iptv", "m3u", "television", "channel")
++        .any(searchable::contains)
++    return hasLiveMarker && type in setOf("tv", "channel", "unknown")
++}
++
++@HiltViewModel
++class LiveTvViewModel @Inject constructor(
++    addonRepository: AddonRepository
++) : ViewModel() {
++    val catalogs = addonRepository.getInstalledAddons()
++        .map { addons ->
++            addons.asSequence()
++                .filter { it.enabled }
++                .flatMap { addon ->
++                    addon.catalogs.asSequence()
++                        .filter { catalog -> isLiveTvCatalog(addon, catalog) }
++                        .map { catalog ->
++                            LiveTvCatalogEntry(
++                                addonId = addon.id,
++                                addonName = addon.displayName,
++                                catalogId = catalog.id,
++                                catalogName = catalog.name,
++                                type = catalog.apiType
++                            )
++                        }
++                }
++                .distinctBy { "${it.addonId}:${it.type}:${it.catalogId}" }
++                .toList()
++        }
++        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
++}
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 9c829b0..789c78f 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -16,7 +16,11 @@
+     <string name="web_installed_addons">Installed Addons</string>
+     <string name="web_no_addons">No addons installed</string>
+     <string name="web_community_addons">Community Add-ons</string>
+-    <string name="web_community_addons_description">Browse the independent Stremio Addons directory. Configure personal services on the provider’s page, then install the resulting manifest URL here.</string>
++    <string name="web_community_addons_description">Browse every current listing in the independent Stremio Addons directory. Configure personal services on the provider’s page, then install the resulting manifest URL here.</string>
++    <string name="web_community_search">Search</string>
++    <string name="web_community_all">All Add-ons</string>
++    <string name="web_community_live_tv">Live TV</string>
++    <string name="web_community_loaded">%1$d community add-ons loaded</string>
+     <string name="web_community_search_placeholder">Search approved add-ons</string>
+     <string name="web_community_browse">Browse</string>
+     <string name="web_community_loading">Loading community add-ons…</string>
+@@ -2133,6 +2137,14 @@
+ 
+     <!-- SidebarNavigation / MainActivity -->
+     <string name="nav_home">Home</string>
++    <string name="nav_live_tv">Live TV</string>
++    <string name="live_tv_title">Live TV</string>
++    <string name="live_tv_subtitle">Channels supplied by your installed Stremio community add-ons</string>
++    <string name="live_tv_empty_title">No Live TV add-on installed</string>
++    <string name="live_tv_empty_subtitle">Open Community Add-ons to install an IPTV or channel catalog.</string>
++    <string name="live_tv_manage_addons">Community Add-ons &amp; IPTV setup</string>
++    <string name="addon_community_title">Browse Community Add-ons</string>
++    <string name="addon_community_subtitle">Open the complete Stremio directory, including Live TV add-ons, on your phone</string>
+     <string name="nav_discover">Discover</string>
+     <string name="nav_search">Search</string>
+     <string name="nav_library">Library</string>
+diff --git a/app/src/test/java/com/nuvio/tv/ui/screens/livetv/LiveTvCatalogTest.kt b/app/src/test/java/com/nuvio/tv/ui/screens/livetv/LiveTvCatalogTest.kt
+new file mode 100644
+index 0000000..efc240d
+--- /dev/null
++++ b/app/src/test/java/com/nuvio/tv/ui/screens/livetv/LiveTvCatalogTest.kt
+@@ -0,0 +1,40 @@
++package com.nuvio.tv.ui.screens.livetv
++
++import com.nuvio.tv.domain.model.Addon
++import com.nuvio.tv.domain.model.CatalogDescriptor
++import com.nuvio.tv.domain.model.ContentType
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class LiveTvCatalogTest {
++    private fun addon(name: String, catalog: CatalogDescriptor) = Addon(
++        id = "test",
++        name = name,
++        version = "1.0.0",
++        description = null,
++        logo = null,
++        baseUrl = "https://example.com",
++        catalogs = listOf(catalog),
++        types = listOf(catalog.type),
++        resources = emptyList()
++    )
++
++    @Test
++    fun channelCatalogIsAlwaysLiveTv() {
++        val catalog = CatalogDescriptor(ContentType.CHANNEL, "channel", "channels", "Channels")
++        assertTrue(isLiveTvCatalog(addon("Example", catalog), catalog))
++    }
++
++    @Test
++    fun tvSeriesCatalogIsNotMistakenForLiveTv() {
++        val catalog = CatalogDescriptor(ContentType.TV, "tv", "popular", "Popular TV Shows")
++        assertFalse(isLiveTvCatalog(addon("Metadata", catalog), catalog))
++    }
++
++    @Test
++    fun iptvCatalogIsLiveTv() {
++        val catalog = CatalogDescriptor(ContentType.TV, "tv", "iptv-us", "US Live TV")
++        assertTrue(isLiveTvCatalog(addon("IPTV", catalog), catalog))
++    }
++}

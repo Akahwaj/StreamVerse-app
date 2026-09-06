@@ -181,9 +181,15 @@ require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" "nsfw
 require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" "configureUrl" "Configurable community add-ons open their provider setup page"
 require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" "configurationRequired" "Configuration-required aggregators cannot be installed as empty default manifests"
 require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" "Directory data provided by Stremio Addons|web_community_attribution" "Community directory attribution remains visible"
+require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" "limit=100&page=" "Community directory loads every approved add-on page"
+require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" "flattenCommunityAddons" "Approved community add-on instances are included"
+require_file "app/src/main/java/com/nuvio/tv/ui/screens/livetv/LiveTvScreen.kt" "Remote-first Live TV hub"
+require_file "app/src/main/java/com/nuvio/tv/ui/screens/livetv/LiveTvViewModel.kt" "Installed Live TV catalog resolver"
+require_match "app/src/main/java/com/nuvio/tv/MainActivity.kt" 'Screen\.LiveTv\.route' "Live TV is present in the primary TV navigation"
+require_file "app/src/test/java/com/nuvio/tv/ui/screens/livetv/LiveTvCatalogTest.kt" "Live TV catalog classification tests"
 
-# Live playback compatibility. This validates HLS/M3U playback and Android TV
-# EPG integration; it does not claim a standalone XMLTV/Xtream library manager.
+# Live playback compatibility. The Live TV hub browses compatible installed
+# Stremio channel catalogs; it does not embed a private M3U/XMLTV subscription.
 require_file "app/src/main/java/com/nuvio/tv/ui/screens/stream/StreamScreen.kt" "Stream selection screen"
 require_file "app/src/main/java/com/nuvio/tv/ui/screens/player/PlayerMediaSourceFactory.kt" "Player media-source factory"
 require_match "app/src/main/java/com/nuvio/tv/ui/screens/player/PlayerMediaSourceFactory.kt" 'APPLICATION_M3U8' "HLS MIME handling is compiled"
