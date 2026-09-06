@@ -193,7 +193,7 @@ require_match "app/src/main/java/com/nuvio/tv/ui/screens/settings/AboutScreen.kt
 require_match "app/src/main/java/com/nuvio/tv/MainActivity.kt" 'add\(Screen\.AddonManager\.route\)' "Community Add-ons manager is a sidebar root route"
 require_match "app/src/main/java/com/nuvio/tv/MainActivity.kt" 'label = strNavCommunityAddons' "Community Add-ons sidebar item is compiled"
 require_match "app/src/main/res/values/strings.xml" '<string name="nav_community_addons">Community Add-ons</string>' "Community Add-ons sidebar label is branded"
-require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" "effectiveMode === 'adult' \\? 'only' : 'exclude'" "Adult directory uses the API's isolated NSFW-only filter"
+require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" 'nsfw=only' "Adult directory uses the API isolated NSFW-only filter"
 require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" 'window\\.confirm' "Adult directory requires an age confirmation"
 require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" 'streamverseAdultConfirmed' "Adult confirmation is scoped to the current browser session"
 require_match "app/src/main/res/values/strings.xml" 'web_community_adult.*Adult \\(18\\+\\)' "Adult community section is clearly labeled 18+"
