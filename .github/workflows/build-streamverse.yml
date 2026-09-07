@@ -43,6 +43,11 @@ on:
         required: false
         type: string
         default: streamverse.patch
+      extra_patch_path:
+        description: Optional caller-repository patch applied after the public StreamVerse patch set
+        required: false
+        type: string
+        default: ""
     secrets:
       STREAMVERSE_KEYSTORE_B64:
         required: false
@@ -64,6 +69,7 @@ env:
   UPSTREAM_REPOSITORY: ${{ inputs.upstream_repository || 'NuvioMedia/NuvioTV' }}
   UPSTREAM_REF: ${{ inputs.upstream_ref || 'b95c899af04189f97284d3c91cb2c478fafc9c04' }}
   PATCH_PATH: ${{ inputs.patch_path || 'streamverse.patch' }}
+  EXTRA_PATCH_PATH: ${{ inputs.extra_patch_path || '' }}
   EXPECTED_ABIS: armeabi-v7a arm64-v8a
   EXPECTED_PACKAGE: com.akahwaj.streamverse
   MIN_MIB: "40"
@@ -80,7 +86,15 @@ jobs:
       - name: Check out StreamVerse orchestration source
         uses: actions/checkout@v4
         with:
+          repository: Akahwaj/StreamVerse-app
+          ref: main
           path: orchestrator
+
+      - name: Check out caller customization source
+        if: ${{ env.EXTRA_PATCH_PATH != '' }}
+        uses: actions/checkout@v4
+        with:
+          path: personal
 
       - name: Check out pinned Android TV source
         uses: actions/checkout@v4
@@ -149,6 +163,22 @@ jobs:
             git -C source apply --check "$candidate"
             git -C source apply "$candidate"
           done
+
+          if [[ -n "$EXTRA_PATCH_PATH" ]]; then
+            [[ "$EXTRA_PATCH_PATH" != /* ]] || {
+              echo "::error::Extra patch path must be repository-relative"
+              exit 1
+            }
+            extra_patch=$(realpath -m "$GITHUB_WORKSPACE/personal/$EXTRA_PATCH_PATH")
+            personal_root=$(realpath "$GITHUB_WORKSPACE/personal")
+            [[ "$extra_patch" == "$personal_root/"* && -f "$extra_patch" ]] || {
+              echo "::error::Extra patch path is invalid or missing"
+              exit 1
+            }
+            echo "Applying private caller customization"
+            git -C source apply --check "$extra_patch"
+            git -C source apply "$extra_patch"
+          fi
 
       - name: Configure version and signing channel
         id: release-config
