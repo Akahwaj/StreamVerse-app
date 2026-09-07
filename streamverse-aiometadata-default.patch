@@ -1,0 +1,65 @@
+diff --git a/app/src/main/java/com/nuvio/tv/data/local/AddonPreferences.kt b/app/src/main/java/com/nuvio/tv/data/local/AddonPreferences.kt
+index ab3fd84..f808a6e 100644
+--- a/app/src/main/java/com/nuvio/tv/data/local/AddonPreferences.kt
++++ b/app/src/main/java/com/nuvio/tv/data/local/AddonPreferences.kt
+@@ -26,6 +26,8 @@ class AddonPreferences @Inject constructor(
+ ) {
+     companion object {
+         private const val FEATURE = "addon_preferences"
++        private const val STREAMVERSE_METADATA_BASE_URL =
++            "https://aiometadata.elfhosted.com/stremio/7e1b6e37-b28d-4ecb-ab15-206d7f44d69f"
+     }
+ 
+     private fun effectiveProfileId(): Int {
+@@ -50,6 +52,7 @@ class AddonPreferences @Inject constructor(
+     private val userSetNamesKey = stringPreferencesKey("addon_user_set_names")
+     private val addonEnabledStatesKey = stringPreferencesKey("installed_addon_enabled_states")
+     private val streamVerseBootstrapV1Key = booleanPreferencesKey("streamverse_addon_bootstrap_v1")
++    private val streamVerseBootstrapV2Key = booleanPreferencesKey("streamverse_addon_bootstrap_v2")
+     private val manifestSuffix = "/manifest.json"
+ 
+     private fun canonicalizeUrl(url: String): String {
+@@ -104,18 +107,30 @@ class AddonPreferences @Inject constructor(
+     suspend fun ensureStreamVerseBootstrapAddons() {
+         val ds = store()
+         ds.edit { preferences ->
+-            if (preferences[streamVerseBootstrapV1Key] == true) return@edit
+-
+-            val current = getCurrentList(preferences)
+-            if (current.isEmpty()) {
++            var current = getCurrentList(preferences)
++            if (preferences[streamVerseBootstrapV1Key] != true && current.isEmpty()) {
+                 val defaults = getDefaultAddons().toList()
+                 preferences[orderedUrlsKey] = gson.toJson(defaults)
+                 preferences[addonEnabledStatesKey] = gson.toJson(
+                     defaults.associateWith { true }
+                 )
+                 preferences.remove(legacyUrlsKey)
++                current = defaults
+             }
+             preferences[streamVerseBootstrapV1Key] = true
++
++            if (preferences[streamVerseBootstrapV2Key] != true) {
++                val metadataUrl = canonicalizeUrl(STREAMVERSE_METADATA_BASE_URL)
++                if (current.none { canonicalizeUrl(it).equals(metadataUrl, ignoreCase = true) }) {
++                    current = listOf(metadataUrl) + current
++                    preferences[orderedUrlsKey] = gson.toJson(current)
++                }
++                val enabledStates = getCurrentEnabledStates(preferences).toMutableMap()
++                enabledStates[metadataUrl] = true
++                preferences[addonEnabledStatesKey] = gson.toJson(enabledStates)
++                preferences.remove(legacyUrlsKey)
++                preferences[streamVerseBootstrapV2Key] = true
++            }
+         }
+     }
+ 
+@@ -246,6 +261,7 @@ class AddonPreferences @Inject constructor(
+     }
+ 
+     private fun getDefaultAddons(): Set<String> = setOf(
++        STREAMVERSE_METADATA_BASE_URL,
+         "https://v3-cinemeta.strem.io",
+         "https://opensubtitles-v3.strem.io"
+     )
+

@@ -2,12 +2,36 @@
 
 StreamVerse is a personal Android TV and Fire TV media hub with a cinematic, remote-first layout. It is built as a GPLv3 modification of [NuvioTV](https://github.com/NuvioMedia/NuvioTV).
 
+## Project links
+
+- [NuvioTV upstream source](https://github.com/NuvioMedia/NuvioTV)
+- [Nuvio official website](https://nuvio.tv/)
+- [Stremio Community Add-ons directory](https://stremio-addons.net/)
+- [Stremio add-on installation guide](https://stremio.zendesk.com/hc/en-us/articles/360021348391-How-to-install-uninstall-Add-ons)
+
+## UI gallery
+
+![StreamVerse UI gallery](docs/screenshots/streamverse-ui-gallery.png)
+
+| Home | Live TV |
+| --- | --- |
+| ![StreamVerse cinematic home screen](docs/screenshots/01-home.png) | ![StreamVerse Live TV guide](docs/screenshots/02-live-tv.png) |
+| **Community Add-ons** | **Connected Services** |
+| ![StreamVerse community add-on directory](docs/screenshots/03-community-addons.png) | ![StreamVerse debrid, Usenet, metadata and tracking services](docs/screenshots/04-connected-services.png) |
+| **Settings** | **Built-in player** |
+| ![StreamVerse settings with restart action](docs/screenshots/05-settings.png) | ![StreamVerse built-in player](docs/screenshots/06-built-in-player.png) |
+
+These deterministic layout previews document the TV-safe navigation and feature placement. Catalog artwork, installed add-ons, connected-account status, and channel data vary by device and personal configuration. Regenerate them with `python3 scripts/generate-ui-previews.py`.
+
+[Download the complete UI screenshot pack](docs/StreamVerse-UI-Screenshots.zip)
+
 ## Highlights
 
 - Dark cinematic home screen with featured artwork and D-pad focus states
 - Poster rows for Movies, TV Shows, Anime, Continue Watching, and custom collections
 - Stremio-compatible add-on support
 - User-installable community manifests and compatible open-source GitHub plugin repositories
+- Approved AIOMetadata demo manifest preloaded as an enabled, editable default; additional manifest URLs remain fully user-managed
 - An attributed, searchable Stremio Addons community directory in the phone-accessible Fire TV manager, including configurable catalog add-ons such as Streaming Catalogs
 - Configuration-required aggregators such as AIOStreams are routed through their setup page; StreamVerse accepts the resulting private manifest without exposing it in the repository
 - TMDB movie/TV discovery, lists, collections, artwork, companies, and network catalogs
