@@ -1,0 +1,133 @@
+name: StreamVerse Build Report
+
+on:
+  workflow_run:
+    workflows:
+      - Build, validate, and release StreamVerse
+    types:
+      - completed
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/build-report.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build-report:
+    name: Generate durable build report
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Resolve build run
+        id: resolve
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "workflow_run" && -n "${EVENT_RUN_ID:-}" ]]; then
+            run_id="$EVENT_RUN_ID"
+          else
+            run_id=$(gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "/repos/$REPOSITORY/actions/runs?branch=main&per_page=20" \
+              --jq '.workflow_runs[] | select(.path == ".github/workflows/build-streamverse.yml") | .id' \
+              | head -n 1)
+          fi
+
+          [[ -n "${run_id:-}" ]] || {
+            echo '::error::No StreamVerse build workflow run could be resolved.'
+            exit 1
+          }
+
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Generate build report
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ steps.resolve.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p report
+
+          gh api "/repos/$REPOSITORY/actions/runs/$RUN_ID" > report/run.json
+          gh api "/repos/$REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" > report/jobs.json
+          gh api "/repos/$REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100" > report/artifacts.json
+
+          run_name=$(jq -r '.name' report/run.json)
+          run_number=$(jq -r '.run_number' report/run.json)
+          run_attempt=$(jq -r '.run_attempt' report/run.json)
+          status=$(jq -r '.status' report/run.json)
+          conclusion=$(jq -r '.conclusion // "pending"' report/run.json)
+          branch=$(jq -r '.head_branch // "unknown"' report/run.json)
+          sha=$(jq -r '.head_sha // "unknown"' report/run.json)
+          title=$(jq -r '.display_title // .name' report/run.json)
+          run_url=$(jq -r '.html_url' report/run.json)
+          created=$(jq -r '.created_at' report/run.json)
+          updated=$(jq -r '.updated_at' report/run.json)
+
+          {
+            echo '# StreamVerse Build Report'
+            echo
+            echo "- Workflow: **$run_name**"
+            echo "- Run: **#$run_number** (attempt $run_attempt)"
+            echo "- Result: **$conclusion** ($status)"
+            echo "- Title: $title"
+            echo "- Branch: \`$branch\`"
+            echo "- Commit: \`$sha\`"
+            echo "- Created: $created"
+            echo "- Updated: $updated"
+            echo "- Run URL: $run_url"
+            echo
+            echo '## Jobs'
+            jq -r '.jobs[] | "- " + .name + ": **" + (.conclusion // .status) + "**"' report/jobs.json
+            echo
+            echo '## Artifacts'
+            if [[ $(jq '.total_count' report/artifacts.json) -eq 0 ]]; then
+              echo '- No artifacts were published.'
+            else
+              jq -r '.artifacts[] | "- " + .name + " — " + ((.size_in_bytes / 1048576) | tostring) + " MiB; expires " + .expires_at' report/artifacts.json
+            fi
+            echo
+            echo '## Failed or cancelled steps'
+            failures=0
+            while IFS=$'\t' read -r job_id job_name; do
+              [[ -n "$job_id" ]] || continue
+              gh api "/repos/$REPOSITORY/actions/jobs/$job_id" > "report/job-$job_id.json"
+              while IFS= read -r line; do
+                [[ -n "$line" ]] || continue
+                echo "- $job_name / $line"
+                failures=$((failures + 1))
+              done < <(jq -r '.steps[]? | select((.conclusion // "") == "failure" or (.conclusion // "") == "cancelled") | .name + ": **" + .conclusion + "**"' "report/job-$job_id.json")
+            done < <(jq -r '.jobs[] | [.id, .name] | @tsv' report/jobs.json)
+            if [[ "$failures" -eq 0 ]]; then
+              echo '- None.'
+            fi
+          } > report/build-report.md
+
+          cat report/build-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build report
+        uses: actions/upload-artifact@v4
+        with:
+          name: StreamVerse-build-report-${{ steps.resolve.outputs.run_id }}
+          path: |
+            report/build-report.md
+            report/run.json
+            report/jobs.json
+            report/artifacts.json
+            report/job-*.json
+          if-no-files-found: error
+          retention-days: 14
