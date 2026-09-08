@@ -1,0 +1,71 @@
+name: Publish verified StreamVerse 0.0.35 CI APK
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/publish-verified-ci-0.0.35-apk.yml
+  push:
+    branches:
+      - release/ci-0.0.35-direct-apk
+    paths:
+      - .github/workflows/publish-verified-ci-0.0.35-apk.yml
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download exact verified artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: "9543741093"
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" > artifact.zip
+          mkdir release
+          unzip -q artifact.zip -d release
+
+      - name: Gate exact APK
+        id: apk
+        run: |
+          set -euo pipefail
+          mapfile -t apks < <(find release -maxdepth 1 -type f -name '*.apk' | sort)
+          [[ ${#apks[@]} -eq 1 ]] || {
+            echo "::error::Expected exactly one APK; found ${#apks[@]}"
+            exit 1
+          }
+          expected="4bb495f0db19626fe8b5e3e2122908c4756a1cf31d84f07c2bb959d93df58d5b"
+          actual=$(sha256sum "${apks[0]}" | cut -d ' ' -f 1)
+          [[ "$actual" == "$expected" ]] || {
+            echo "::error::APK checksum mismatch"
+            exit 1
+          }
+          [[ "$(basename "${apks[0]}")" == "StreamVerse-Fire-TV-universal-arm-0.0.35-ci.apk" ]] || {
+            echo "::error::Unexpected APK filename"
+            exit 1
+          }
+          echo "path=${apks[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish permanent prerelease asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ci-0.0.35
+          TARGET: fb11dbf945cd77c5b7effa61db75cb9ec793d4c1
+          APK_PATH: ${{ steps.apk.outputs.path }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK_PATH" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$APK_PATH" \
+              --target "$TARGET" \
+              --prerelease \
+              --title "StreamVerse 0.0.35 CI" \
+              --notes "Verified Fire TV sideload build from merged StreamVerse identity and add-on recovery changes. CI/test signed; not a production-stable signing channel." \
+              --repo "$GITHUB_REPOSITORY"
+          fi
