@@ -1,0 +1,52 @@
+name: Publish verified StreamVerse 0.0.41 APK
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/publish-ci-0.0.41-apk.yml
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download and verify exact APK artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: "9979038181"
+          EXPECTED_APK: StreamVerse-Fire-TV-universal-arm-0.0.41-ci.apk
+          EXPECTED_SHA256: af563ad80db9250cda0947efd440dc3f240bc06666d0946472b42637ea1f83e6
+        run: |
+          set -euo pipefail
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" > artifact.zip
+          mkdir artifact
+          unzip -q artifact.zip -d artifact
+          mapfile -t apks < <(find artifact -maxdepth 1 -type f -name '*.apk' | sort)
+          test "${#apks[@]}" -eq 1
+          test "$(basename "${apks[0]}")" = "$EXPECTED_APK"
+          echo "$EXPECTED_SHA256  ${apks[0]}" | sha256sum --check --strict
+          echo "APK_PATH=${apks[0]}" >> "$GITHUB_ENV"
+
+      - name: Publish permanent prerelease asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ci-0.0.41
+          RELEASE_TARGET: 1a0b0f95451d81db25a1ef690a574e006f8646c4
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$APK_PATH" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$RELEASE_TAG" "$APK_PATH" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$RELEASE_TARGET" \
+              --title "StreamVerse 0.0.41 CI APK" \
+              --notes "Verified Fire TV test build with Premiumize API-key sign-in, the complete non-NSFW Stremio Community directory, and a Live TV hub. CI/test signed; not a production release." \
+              --prerelease
+          fi
