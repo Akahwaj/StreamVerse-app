@@ -74,7 +74,7 @@ diff --git a/app/src/main/java/com/nuvio/tv/ui/screens/settings/EssentialPlaybac
  import com.nuvio.tv.data.local.StreamAutoPlayMode
  import com.nuvio.tv.ui.components.P2pConsentDialog
  import kotlinx.coroutines.launch
-@@ -48,6 +49,30 @@ fun EssentialPlaybackSettingsContent(
+@@ -48,6 +49,27 @@ fun EssentialPlaybackSettingsContent(
              }
              item(key = "playback_basics") {
                  SettingsGroupCard(modifier = Modifier.fillMaxWidth(), title = stringResource(R.string.essential_playback_basics)) {
