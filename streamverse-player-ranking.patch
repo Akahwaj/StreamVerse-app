@@ -1,0 +1,43 @@
+diff --git a/app/src/main/java/com/nuvio/tv/core/player/StreamAutoPlaySelector.kt b/app/src/main/java/com/nuvio/tv/core/player/StreamAutoPlaySelector.kt
+--- a/app/src/main/java/com/nuvio/tv/core/player/StreamAutoPlaySelector.kt
++++ b/app/src/main/java/com/nuvio/tv/core/player/StreamAutoPlaySelector.kt
+@@ -43,7 +43,31 @@ object StreamAutoPlaySelector {
+         return stream.getStreamUrl() != null || stream.isTorrent() || stream.isDirectDebrid()
+     }
+ 
++    private fun streamIdentityKey(stream: Stream): String {
++        val directUrl = stream.getStreamUrl()?.trim()?.lowercase()
++        if (!directUrl.isNullOrEmpty()) return "url:$directUrl"
++
++        val infoHash = stream.getEffectiveInfoHash()?.trim()?.lowercase()
++        if (!infoHash.isNullOrEmpty()) {
++            return "torrent:$infoHash:${stream.getEffectiveFileIdx() ?: -1}"
++        }
++
++        return "fallback:${stream.stableKey()}"
++    }
++
++    private fun rankCandidateStreams(streams: List<Stream>): List<Stream> =
++        streams.asSequence()
++            .filter(::isPlayable)
++            .distinctBy(::streamIdentityKey)
++            .sortedWith(
++                compareByDescending<Stream> { it.isDirectDebrid() }
++                    .thenByDescending { it.getStreamUrl() != null }
++                    .thenByDescending { it.debridCacheStatus?.state == StreamDebridCacheState.CACHED }
++                    .thenByDescending { it.qualityValue }
++            )
++            .toList()
++
+ 
+ 
+     fun selectAutoPlayStream(
+         streams: List<Stream>,
+@@ -78,5 +102,5 @@ object StreamAutoPlaySelector {
+                 selectedPlugins.isEmpty() || stream.addonName in selectedPlugins
+             }
+-        }
++        }.let(::rankCandidateStreams)
+         if (candidateStreams.isEmpty()) return null
+ 
+         // Binge group matching takes priority over mode — even in MANUAL mode,
