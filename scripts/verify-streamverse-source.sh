@@ -122,8 +122,11 @@ require_match "app/src/main/java/com/nuvio/tv/ui/screens/addon/AddonManagerViewM
 require_match "app/src/main/java/com/nuvio/tv/ui/screens/addon/AddonManagerViewModel.kt" 'manifest.json' "Stremio manifest URLs are recognized"
 require_match "app/src/main/java/com/nuvio/tv/data/local/AddonPreferences.kt" 'https://v3-cinemeta\.strem\.io' "Safe default catalog add-on is compiled"
 require_match "app/src/main/java/com/nuvio/tv/data/local/AddonPreferences.kt" 'https://opensubtitles-v3\.strem\.io' "Safe default subtitle add-on is compiled"
-require_match "app/src/main/java/com/nuvio/tv/data/local/AddonPreferences.kt" '7e1b6e37-b28d-4ecb-ab15-206d7f44d69f' "Approved AIOMetadata default is compiled"
-require_match "app/src/main/java/com/nuvio/tv/data/local/AddonPreferences.kt" 'streamverse_addon_bootstrap_v2' "Existing installs receive the approved metadata default once"
+if grep -Eq 'STREAMVERSE_(METADATA|PRIVATE_STREAMS)_BASE_URL|streamverse_addon_bootstrap_v(2|3)' "$SOURCE_ROOT/app/src/main/java/com/nuvio/tv/data/local/AddonPreferences.kt"; then
+  fail "Public build contains a user-specific preloaded add-on bootstrap"
+else
+  pass "Public build contains no user-specific preloaded add-on bootstrap"
+fi
 require_match "app/src/main/java/com/nuvio/tv/data/local/AddonPreferences.kt" 'ensureStreamVerseBootstrapAddons' "Empty upstream installations receive one-time add-on repair"
 require_match "app/src/main/java/com/nuvio/tv/data/local/AddonPreferences.kt" 'suspend fun addAddon' "Manifest URLs remain user-addable"
 require_match "app/src/main/java/com/nuvio/tv/data/local/AddonPreferences.kt" 'suspend fun removeAddon' "Preloaded manifests remain user-removable"
@@ -220,7 +223,7 @@ require_file "app/src/main/java/com/nuvio/tv/core/torrent/TorrServerBinary.kt" "
 require_match "app/src/main/AndroidManifest.xml" 'READ_EPG_DATA' "Android TV EPG read permission is declared"
 require_match "app/src/main/AndroidManifest.xml" 'WRITE_EPG_DATA' "Android TV EPG write permission is declared"
 
-if rg -q -i 'xmltv|xtream' "$SOURCE_ROOT/app/src/main" -g '*.kt' -g '*.xml'; then
+if grep -RqiE --include='*.kt' --include='*.xml' 'xmltv|xtream' "$SOURCE_ROOT/app/src/main"; then
   pass "XMLTV or Xtream source support is present"
 else
   warn "No standalone XMLTV/Xtream channel-library module is present; current Live TV support is stream/HLS based"
