@@ -17,7 +17,7 @@ permissions:
 jobs:
   sanitized-fire-tv:
     name: Sanitized public Fire TV candidate
-    uses: Akahwaj/StreamVerse-app/.github/workflows/build-streamverse.yml@main
+    uses: ./.github/workflows/build-streamverse.yml
     with:
       upstream_repository: NuvioMedia/NuvioTV
       upstream_ref: b95c899af04189f97284d3c91cb2c478fafc9c04
