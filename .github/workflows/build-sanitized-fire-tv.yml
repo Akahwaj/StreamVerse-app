@@ -1,0 +1,26 @@
+name: Build sanitized StreamVerse Fire TV
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/build-sanitized-fire-tv.yml"
+      - "streamverse-player-ranking.patch"
+      - "streamverse*.patch"
+      - "scripts/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sanitized-fire-tv:
+    name: Sanitized public Fire TV candidate
+    uses: Akahwaj/StreamVerse-app/.github/workflows/build-streamverse.yml@main
+    with:
+      upstream_repository: NuvioMedia/NuvioTV
+      upstream_ref: b95c899af04189f97284d3c91cb2c478fafc9c04
+      patch_path: streamverse.patch
+      extra_patch_path: streamverse-player-ranking.patch
+    secrets: inherit
