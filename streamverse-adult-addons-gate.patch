@@ -4,9 +4,9 @@ Date: Sun, 6 Sep 2026 14:35:13 -0400
 Subject: [PATCH] Add PIN-gated adult community add-ons filter
 
 ---
- .../com/nuvio/tv/core/server/AddonWebPage.kt  | 62 ++++++++++++++++++++++---
- app/src/main/res/values/strings.xml           |  8 ++++
- 2 files changed, 66 insertions(+), 4 deletions(-)
+ .../com/nuvio/tv/core/server/AddonWebPage.kt  | 69 +++++++++++++++++++++++++---
+ app/src/main/res/values/strings.xml           |  9 +++++
+ 2 files changed, 74 insertions(+), 4 deletions(-)
 
 diff --git a/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt b/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt
 index 72fc932..2749bf3 100644
@@ -60,7 +60,7 @@ index 72fc932..2749bf3 100644
      renderCommunityAddons(communityItems);
      if (communityItems.length > 0) {
        setCommunityStatus(
-@@ -2111,6 +2118,53 @@ async function loadCommunityAddons(mode) {
+@@ -2111,6 +2118,60 @@ async function loadCommunityAddons(mode) {
    }
  }
  
@@ -74,6 +74,13 @@ index 72fc932..2749bf3 100644
 +}
 +
 +async function loadAdultCommunityAddons() {
++  var ageConfirmed = sessionStorage.getItem('streamverseAdultConfirmed') === 'true';
++  if (!ageConfirmed) {
++    ageConfirmed = window.confirm('${context.getString(R.string.web_community_adult_confirm).replace("'", "\\'")}');
++    if (!ageConfirmed) return;
++    sessionStorage.setItem('streamverseAdultConfirmed', 'true');
++  }
++
 +  if (sessionStorage.getItem('streamverseAdultUnlocked') === 'true') {
 +    loadCommunityAddons('adult');
 +    return;
@@ -118,11 +125,12 @@ diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strin
 index 79b7cf5..865ce52 100644
 --- a/app/src/main/res/values/strings.xml
 +++ b/app/src/main/res/values/strings.xml
-@@ -20,6 +20,14 @@
+@@ -20,6 +20,15 @@
      <string name="web_community_search">Search</string>
      <string name="web_community_all">All Add-ons</string>
      <string name="web_community_live_tv">Live TV</string>
 +    <string name="web_community_adult">Adult (18+)</string>
++    <string name="web_community_adult_confirm">This section lists adult add-ons. Confirm that you are 18 or older to continue.</string>
 +    <string name="web_community_adult_pin_set">Create a 4-digit PIN for Adult add-ons.</string>
 +    <string name="web_community_adult_pin_confirm">Confirm the 4-digit Adult PIN.</string>
 +    <string name="web_community_adult_pin_enter">Enter your 4-digit Adult PIN.</string>
