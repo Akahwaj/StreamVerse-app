@@ -60,7 +60,7 @@ index 72fc932..2749bf3 100644
      renderCommunityAddons(communityItems);
      if (communityItems.length > 0) {
        setCommunityStatus(
-@@ -2111,6 +2118,49 @@ async function loadCommunityAddons(mode) {
+@@ -2111,6 +2118,53 @@ async function loadCommunityAddons(mode) {
    }
  }
  
