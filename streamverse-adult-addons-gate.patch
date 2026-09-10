@@ -1,12 +1,12 @@
 From 077d4479ddce81d396825583ad8a6436a30210ac Mon Sep 17 00:00:00 2001
 From: StreamVerse Build <build@streamverse.local>
 Date: Sun, 6 Sep 2026 14:35:13 -0400
-Subject: [PATCH] Add age-gated adult community add-ons filter
+Subject: [PATCH] Add PIN-gated adult community add-ons filter
 
 ---
- .../com/nuvio/tv/core/server/AddonWebPage.kt  | 23 ++++++++++++++++---
- app/src/main/res/values/strings.xml           |  2 ++
- 2 files changed, 22 insertions(+), 3 deletions(-)
+ .../com/nuvio/tv/core/server/AddonWebPage.kt  | 62 ++++++++++++++++++++++---
+ app/src/main/res/values/strings.xml           |  8 ++++
+ 2 files changed, 66 insertions(+), 4 deletions(-)
 
 diff --git a/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt b/app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt
 index 72fc932..2749bf3 100644
@@ -60,17 +60,54 @@ index 72fc932..2749bf3 100644
      renderCommunityAddons(communityItems);
      if (communityItems.length > 0) {
        setCommunityStatus(
-@@ -2111,6 +2118,16 @@ async function loadCommunityAddons(mode) {
+@@ -2111,6 +2118,49 @@ async function loadCommunityAddons(mode) {
    }
  }
  
-+function loadAdultCommunityAddons() {
-+  var ageConfirmed = sessionStorage.getItem('streamverseAdultConfirmed') === 'true';
-+  if (!ageConfirmed) {
-+    ageConfirmed = window.confirm('${context.getString(R.string.web_community_adult_confirm).replace("'", "\\'")}');
-+    if (!ageConfirmed) return;
-+    sessionStorage.setItem('streamverseAdultConfirmed', 'true');
++async function hashAdultPin(pin) {
++  if (!window.crypto || !window.crypto.subtle || !window.TextEncoder) return null;
++  var bytes = new TextEncoder().encode('StreamVerse-Adult-PIN-v1:' + pin);
++  var digest = await window.crypto.subtle.digest('SHA-256', bytes);
++  return Array.from(new Uint8Array(digest)).map(function(value) {
++    return value.toString(16).padStart(2, '0');
++  }).join('');
++}
++
++async function loadAdultCommunityAddons() {
++  if (sessionStorage.getItem('streamverseAdultUnlocked') === 'true') {
++    loadCommunityAddons('adult');
++    return;
 +  }
++
++  var savedHash = localStorage.getItem('streamverseAdultPinHash');
++  if (!savedHash) {
++    var newPin = window.prompt('${context.getString(R.string.web_community_adult_pin_set).replace("'", "\\'")}');
++    if (newPin === null) return;
++    if (!/^[0-9]{4}$/.test(newPin)) {
++      window.alert('${context.getString(R.string.web_community_adult_pin_invalid).replace("'", "\\'")}');
++      return;
++    }
++    var confirmPin = window.prompt('${context.getString(R.string.web_community_adult_pin_confirm).replace("'", "\\'")}');
++    if (confirmPin !== newPin) {
++      window.alert('${context.getString(R.string.web_community_adult_pin_mismatch).replace("'", "\\'")}');
++      return;
++    }
++    savedHash = await hashAdultPin(newPin);
++    if (!savedHash) {
++      window.alert('${context.getString(R.string.web_community_adult_pin_unavailable).replace("'", "\\'")}');
++      return;
++    }
++    localStorage.setItem('streamverseAdultPinHash', savedHash);
++  }
++
++  var enteredPin = window.prompt('${context.getString(R.string.web_community_adult_pin_enter).replace("'", "\\'")}');
++  if (enteredPin === null) return;
++  var enteredHash = await hashAdultPin(enteredPin);
++  if (!enteredHash || enteredHash !== savedHash) {
++    window.alert('${context.getString(R.string.web_community_adult_pin_incorrect).replace("'", "\\'")}');
++    return;
++  }
++  sessionStorage.setItem('streamverseAdultUnlocked', 'true');
 +  loadCommunityAddons('adult');
 +}
 +
@@ -81,12 +118,18 @@ diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strin
 index 79b7cf5..865ce52 100644
 --- a/app/src/main/res/values/strings.xml
 +++ b/app/src/main/res/values/strings.xml
-@@ -20,6 +20,8 @@
+@@ -20,6 +20,14 @@
      <string name="web_community_search">Search</string>
      <string name="web_community_all">All Add-ons</string>
      <string name="web_community_live_tv">Live TV</string>
 +    <string name="web_community_adult">Adult (18+)</string>
-+    <string name="web_community_adult_confirm">This section lists adult add-ons. Confirm that you are 18 or older to continue.</string>
++    <string name="web_community_adult_pin_set">Create a 4-digit PIN for Adult add-ons.</string>
++    <string name="web_community_adult_pin_confirm">Confirm the 4-digit Adult PIN.</string>
++    <string name="web_community_adult_pin_enter">Enter your 4-digit Adult PIN.</string>
++    <string name="web_community_adult_pin_invalid">PIN must contain exactly 4 digits.</string>
++    <string name="web_community_adult_pin_mismatch">PINs did not match.</string>
++    <string name="web_community_adult_pin_incorrect">Incorrect Adult PIN.</string>
++    <string name="web_community_adult_pin_unavailable">Secure PIN hashing is unavailable on this browser.</string>
      <string name="web_community_loaded">%1$d community add-ons loaded</string>
      <string name="web_community_search_placeholder">Search approved add-ons</string>
      <string name="web_community_browse">Browse</string>
