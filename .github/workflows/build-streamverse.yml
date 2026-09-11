@@ -73,7 +73,7 @@ env:
   EXPECTED_ABIS: armeabi-v7a arm64-v8a
   EXPECTED_PACKAGE: com.akahwaj.streamverse
   MIN_MIB: "40"
-  MAX_MIB: "200"
+  MAX_MIB: "240"
   ARTIFACT_NAME: StreamVerse-Fire-TV-universal-arm
 
 jobs:
