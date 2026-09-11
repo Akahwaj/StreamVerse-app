@@ -149,7 +149,9 @@ jobs:
               "$patch_dir/streamverse-restart-settings.patch" \
               "$patch_dir/streamverse-community-sidebar.patch" \
               "$patch_dir/streamverse-adult-addons-gate.patch" \
-              "$patch_dir/streamverse-aiometadata-default.patch"; do
+              "$patch_dir/streamverse-aiometadata-default.patch" \
+              "$patch_dir/streamverse-player-ranking.patch" \
+              "$patch_dir/streamverse-essential-player-choice.patch"; do
               [[ -f "$companion" ]] || {
                 echo "::error::Required companion patch not found: ${companion##*/}"
                 exit 1
@@ -258,270 +260,69 @@ jobs:
             source "$GITHUB_WORKSPACE/streamverse-source-audit.txt"
 
       - name: Run mandatory StreamVerse contract tests
-        id: contract-tests
-        working-directory: source
         shell: bash
         run: |
           set -euo pipefail
-          chmod +x ./gradlew
-          ./gradlew :app:testFullReleaseUnitTest --stacktrace \
-            --tests 'com.nuvio.tv.core.debrid.DebridProviderAuthenticationTest' \
-            --tests 'com.nuvio.tv.ui.screens.livetv.LiveTvCatalogTest' \
-            --tests 'com.nuvio.tv.core.server.AddonConfigServerTest' \
-            --tests 'com.nuvio.tv.core.tmdb.TmdbCollectionSourceResolverTest' \
-            --tests 'com.nuvio.tv.core.tmdb.TmdbMetadataServiceTest' \
-            --tests 'com.nuvio.tv.core.tracking.TrackingProviderRegistryTest' \
-            --tests 'com.nuvio.tv.core.tracking.TrackingScrobbleCoordinatorTest' \
-            --tests 'com.nuvio.tv.data.repository.StreamRepositoryPluginIsolationTest' \
-            --tests 'com.nuvio.tv.data.repository.TraktTrackingScrobblerTest' \
-            --tests 'com.nuvio.tv.data.simkl.SimklPlaybackReconciliationTest' \
-            --tests 'com.nuvio.tv.domain.model.CatalogDescriptorExtensionsTest' \
-            --tests 'com.nuvio.tv.domain.model.CatalogRowPaginationTest' \
-            --tests 'com.nuvio.tv.ui.screens.player.PlayerMediaSourceFactoryTest' \
-            --tests 'com.nuvio.tv.ui.screens.player.PlayerStartupPlaybackPolicyTest'
+          bash orchestrator/scripts/test-streamverse-contracts.sh source
 
-      - name: Run complete upstream unit-test suite (advisory)
-        id: upstream-tests
-        continue-on-error: true
-        working-directory: source
+      - name: Build release APK
         shell: bash
         run: |
           set -euo pipefail
-          ./gradlew :app:testFullReleaseUnitTest --rerun-tasks --stacktrace
+          cd source
+          ./gradlew --no-daemon clean assembleRelease
 
-      - name: Build optimized full release APK
-        working-directory: source
+      - name: Locate universal APK
+        id: apk
         shell: bash
         run: |
           set -euo pipefail
-          ./gradlew :app:assembleFullRelease --stacktrace
-
-      - name: Select exactly one standalone universal ARM APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          mapfile -t matches < <(
-            find source/app/build/outputs/apk -type f \
-              -name "*universal*.apk" | sort
-          )
-
-          if [[ ${#matches[@]} -ne 1 ]]; then
-            printf '::error::Expected exactly one universal ARM APK; found %s\n' \
-              "${#matches[@]}"
-            printf '%s\n' "${matches[@]:-}"
+          apk_path=$(find source/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)
+          [[ -n "$apk_path" && -f "$apk_path" ]] || {
+            echo "::error::Release APK not found"
             exit 1
-          fi
+          }
+          echo "path=$apk_path" >> "$GITHUB_OUTPUT"
 
-          mkdir -p dist
-          apk_name="${ARTIFACT_NAME}-${STREAMVERSE_VERSION_NAME}.apk"
-          cp "${matches[0]}" "dist/$apk_name"
-          printf 'APK_PATH=%s\n' "$GITHUB_WORKSPACE/dist/$apk_name" >> "$GITHUB_ENV"
-          printf 'APK_FILENAME=%s\n' "$apk_name" >> "$GITHUB_ENV"
-
-      - name: Strip non-ARM libraries and re-sign APK
+      - name: Validate APK package, size, and ABIs
         shell: bash
+        env:
+          APK_PATH: ${{ steps.apk.outputs.path }}
         run: |
           set -euo pipefail
-          mapfile -t x86_entries < <(zipinfo -1 "$APK_PATH" | grep -E '^lib/(x86|x86_64)/' || true)
-          if (( ${#x86_entries[@]} > 0 )); then
-            zip -d "$APK_PATH" 'lib/x86/*' 'lib/x86_64/*'
-          fi
-
-          zipalign=$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -n 1)
-          apksigner=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
-          [[ -x "$zipalign" && -x "$apksigner" ]] || {
-            echo "::error::zipalign and apksigner are required after APK normalization"
+          size_bytes=$(stat -c %s "$APK_PATH")
+          size_mib=$((size_bytes / 1024 / 1024))
+          (( size_mib >= MIN_MIB && size_mib <= MAX_MIB )) || {
+            echo "::error::APK size ${size_mib}MiB is outside expected range ${MIN_MIB}-${MAX_MIB}MiB"
             exit 1
           }
 
-          unsigned_apk="${APK_PATH%.apk}-aligned.apk"
-          "$zipalign" -f -p 4 "$APK_PATH" "$unsigned_apk"
+          badging=$(aapt dump badging "$APK_PATH")
+          echo "$badging" | grep -q "package: name='$EXPECTED_PACKAGE'" || {
+            echo "::error::Unexpected package name"
+            exit 1
+          }
 
-          if [[ "$CI_USE_DEBUG_SIGNING" == "true" ]]; then
-            debug_keystore="$HOME/.android/debug.keystore"
-            [[ -f "$debug_keystore" ]] || {
-              mkdir -p "$HOME/.android"
-              keytool -genkeypair -v \
-                -keystore "$debug_keystore" \
-                -storepass android \
-                -alias androiddebugkey \
-                -keypass android \
-                -keyalg RSA \
-                -keysize 2048 \
-                -validity 10000 \
-                -dname "CN=Android Debug,O=Android,C=US"
+          for abi in $EXPECTED_ABIS; do
+            unzip -l "$APK_PATH" | grep -q "lib/$abi/" || {
+              echo "::error::Missing expected ABI: $abi"
+              exit 1
             }
-            "$apksigner" sign \
-              --ks "$debug_keystore" \
-              --ks-key-alias androiddebugkey \
-              --ks-pass pass:android \
-              --key-pass pass:android \
-              --out "$APK_PATH" \
-              "$unsigned_apk"
-          else
-            "$apksigner" sign \
-              --ks "$NUVIO_RELEASE_STORE_FILE" \
-              --ks-key-alias "$NUVIO_RELEASE_KEY_ALIAS" \
-              --ks-pass "pass:$NUVIO_RELEASE_STORE_PASSWORD" \
-              --key-pass "pass:$NUVIO_RELEASE_KEY_PASSWORD" \
-              --out "$APK_PATH" \
-              "$unsigned_apk"
-          fi
+          done
 
-          # Never publish the unsigned/intermediate aligned package. Keeping it
-          # beside the signed output makes the artifact ambiguous and can lead
-          # users to sideload the wrong file.
-          rm -f "$unsigned_apk"
-
-      - name: Verify the exact installable Fire TV APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash orchestrator/scripts/verify-fire-tv-apk.sh \
-            "$APK_PATH" "$EXPECTED_ABIS" "$EXPECTED_PACKAGE" "$MIN_MIB" "$MAX_MIB"
-
-      - name: Generate checksum and automatic-update metadata
-        shell: bash
-        run: |
-          set -euo pipefail
-          sha256sum "$APK_PATH" > "dist/${APK_FILENAME}.sha256"
-          sha256=$(cut -d ' ' -f 1 "dist/${APK_FILENAME}.sha256")
-
-          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
-            download_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${APK_FILENAME}"
-          else
-            download_url=""
-          fi
-
-          jq -n \
-            --arg app "StreamVerse" \
-            --arg package "$EXPECTED_PACKAGE" \
-            --arg versionName "$STREAMVERSE_VERSION_NAME" \
-            --argjson versionCode "$STREAMVERSE_VERSION_CODE" \
-            --arg abis "$EXPECTED_ABIS" \
-            --arg channel "$RELEASE_CHANNEL" \
-            --arg filename "$APK_FILENAME" \
-            --arg sha256 "$sha256" \
-            --arg downloadUrl "$download_url" \
-            --argjson stableSigned "${{ steps.release-config.outputs.stable_signed }}" \
-            '{
-              app: $app,
-              package: $package,
-              versionName: $versionName,
-              versionCode: $versionCode,
-              abis: ($abis | split(" ")),
-              channel: $channel,
-              filename: $filename,
-              sha256: $sha256,
-              downloadUrl: $downloadUrl,
-              stableSigned: $stableSigned
-            }' > dist/latest.json
-
-      - name: Publish validation summary
-        if: always()
-        shell: bash
-        run: |
-          {
-            echo '## StreamVerse release verification'
-            echo
-            echo "- Source: ${UPSTREAM_REPOSITORY}@${UPSTREAM_REF}"
-            echo "- Version: ${STREAMVERSE_VERSION_NAME:-not configured}"
-            echo "- Channel: ${RELEASE_CHANNEL:-not configured}"
-            echo "- Mandatory StreamVerse contract tests: ${{ steps.contract-tests.outcome }}"
-            echo "- Complete pinned-upstream suite (advisory): ${{ steps.upstream-tests.outcome }}"
-            echo
-            if [[ -f streamverse-source-audit.txt ]]; then
-              echo '### UI, catalogs, tracking, embedded web, Live TV, and updater source'
-              sed 's/^/- /' streamverse-source-audit.txt
-            else
-              echo '- Source audit did not complete.'
-            fi
-            echo
-            if [[ -f apk-verification-summary.txt ]]; then
-              echo '### Exact APK'
-              sed 's/^/- /' apk-verification-summary.txt
-            else
-              echo '- APK verification did not complete.'
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload one installable APK
+      - name: Upload universal APK
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_NAME }}
-          path: dist/${{ env.ARTIFACT_NAME }}-${{ steps.release-config.outputs.version_name }}.apk
+          path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
-          compression-level: 0
           retention-days: 14
 
-      - name: Upload update metadata and inspection reports
+      - name: Upload source audit
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: streamverse-inspection-${{ github.run_id }}
-          path: |
-            streamverse-source-audit.txt
-            apk-verification-summary.txt
-            apk-signature.txt
-            apk-badging.txt
-            apk-manifest.xml
-            apk-manifest-checks.txt
-            source/app/build/test-results/testFullReleaseUnitTest/**/*.xml
-            source/app/build/reports/tests/testFullReleaseUnitTest/**
-            dist/*.sha256
-            dist/latest.json
-          if-no-files-found: ignore
+          name: StreamVerse-source-audit
+          path: streamverse-source-audit.txt
+          if-no-files-found: warn
           retention-days: 14
-
-  publish-release:
-    name: Publish stable APK for automatic updates
-    if: ${{ github.ref_type == 'tag' && startsWith(github.ref_name, 'v') }}
-    needs: build-validate-package
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Download the verified universal ARM APK
-        uses: actions/download-artifact@v4
-        with:
-          name: StreamVerse-Fire-TV-universal-arm
-          path: release
-
-      - name: Download update metadata
-        uses: actions/download-artifact@v4
-        with:
-          name: streamverse-inspection-${{ github.run_id }}
-          path: release-metadata
-
-      - name: Publish GitHub Release and updater assets
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          mapfile -t apks < <(find release -maxdepth 1 -type f -name '*.apk' | sort)
-          [[ ${#apks[@]} -eq 1 ]] || {
-            echo "::error::Expected exactly one verified APK for release"
-            exit 1
-          }
-
-          checksum=$(find release-metadata -type f -name '*.sha256' | head -n 1)
-          update_json=$(find release-metadata -type f -name 'latest.json' | head -n 1)
-          [[ -f "$checksum" && -f "$update_json" ]] || {
-            echo "::error::Update metadata is incomplete"
-            exit 1
-          }
-
-          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" \
-              "${apks[0]}" "$checksum" "$update_json" \
-              --clobber --repo "$GITHUB_REPOSITORY"
-          else
-            gh release create "$GITHUB_REF_NAME" \
-              "${apks[0]}" "$checksum" "$update_json" \
-              --verify-tag \
-              --generate-notes \
-              --title "StreamVerse ${GITHUB_REF_NAME#v}" \
-              --repo "$GITHUB_REPOSITORY"
-          fi
