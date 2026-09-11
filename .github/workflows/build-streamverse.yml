@@ -123,6 +123,26 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Resolve Android build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          [[ -n "$sdk_root" && -d "$sdk_root/build-tools" ]] || {
+            echo "::error::Android SDK build-tools directory is unavailable"
+            exit 1
+          }
+
+          aapt_bin=$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -type f -name aapt -perm -111 | sort -V | tail -n 1)
+          [[ -n "$aapt_bin" && -x "$aapt_bin" ]] || {
+            echo "::error::Unable to locate an executable aapt binary under $sdk_root/build-tools"
+            exit 1
+          }
+
+          echo "AAPT_BIN=$aapt_bin" >> "$GITHUB_ENV"
+          echo "$(dirname "$aapt_bin")" >> "$GITHUB_PATH"
+          "$aapt_bin" version
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -326,7 +346,7 @@ jobs:
             exit 1
           }
 
-          badging=$(aapt dump badging "$APK_PATH")
+          badging=$("$AAPT_BIN" dump badging "$APK_PATH")
           printf '%s\n' "$badging" | grep -q "package: name='$EXPECTED_PACKAGE'" || {
             echo "::error::Unexpected package name; expected $EXPECTED_PACKAGE"
             exit 1
@@ -366,7 +386,7 @@ jobs:
             exit 1
           }
 
-          badging=$(aapt dump badging "$APK_PATH")
+          badging=$("$AAPT_BIN" dump badging "$APK_PATH")
           package_line=$(printf '%s\n' "$badging" | grep -m1 '^package:')
 
           printf '%s\n' "$package_line" | grep -Fq "name='$EXPECTED_PACKAGE'" || {
