@@ -30,13 +30,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
-          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
 
-          if [[ "$EVENT_NAME" == "workflow_run" && -n "${EVENT_RUN_ID:-}" ]]; then
-            run_id="$EVENT_RUN_ID"
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            run_id=$(jq -r '.workflow_run.id // empty' "$GITHUB_EVENT_PATH")
           else
             run_id=$(gh api \
               -H 'Accept: application/vnd.github+json' \
