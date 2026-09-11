@@ -34,6 +34,17 @@ require_match() {
   fi
 }
 
+require_absent_match() {
+  local path="$1"
+  local pattern="$2"
+  local label="$3"
+  if [[ -f "$SOURCE_ROOT/$path" ]] && grep -Eq "$pattern" "$SOURCE_ROOT/$path"; then
+    fail "$label"
+  else
+    pass "$label"
+  fi
+}
+
 # Keep this script deliberately contract-focused. The broader source audit
 # verifies the complete StreamVerse feature surface; these assertions protect
 # the playback decisions that must not silently disappear from the default APK.
@@ -60,6 +71,20 @@ require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" 'conf
 require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" 'nsfw=exclude' "Community directory remains safe by default"
 require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" 'nsfw=only' "Adult directory remains isolated"
 require_match "app/src/main/java/com/nuvio/tv/core/server/AddonWebPage.kt" 'streamverseAdultConfirmed' "Adult age acknowledgement remains session-scoped"
+
+# Public/privacy boundary. The reusable build is allowed to carry a private
+# overlay only when EXTRA_PATCH_PATH is explicitly supplied by the personal
+# workflow. Normal public builds must never compile user-specific manifests,
+# private stream endpoints, or personal bootstrap markers into the APK.
+if [[ -z "${EXTRA_PATCH_PATH:-}" ]]; then
+  addon_preferences="app/src/main/java/com/nuvio/tv/data/local/AddonPreferences.kt"
+  require_absent_match "$addon_preferences" 'STREAMVERSE_(METADATA|PRIVATE_STREAMS)_BASE_URL' "Public build contains no personal manifest constants"
+  require_absent_match "$addon_preferences" 'aiometadata\.elfhosted\.com/stremio/' "Public build contains no personal metadata manifest URL"
+  require_absent_match "$addon_preferences" 'aiostreams|elfhosted\.cafe/stremio/' "Public build contains no private stream bootstrap endpoint"
+  require_absent_match "$addon_preferences" 'streamverse_addon_bootstrap_v(2|3)|streamverse_personal_bootstrap' "Public build contains no personal bootstrap markers"
+else
+  pass "Personal overlay explicitly enabled by caller workflow"
+fi
 
 if (( FAILED != 0 )); then
   echo "::error::StreamVerse mandatory contract validation failed"
