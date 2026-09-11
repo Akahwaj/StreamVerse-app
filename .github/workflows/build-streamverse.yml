@@ -264,20 +264,25 @@ jobs:
           bash orchestrator/scripts/test-streamverse-contracts.sh source
 
       - name: Build release APK
+        working-directory: source
         shell: bash
         run: |
           set -euo pipefail
-          cd source
-          ./gradlew --no-daemon clean assembleRelease
+          # Build the app's Full release variant only. A root-level
+          # `assembleRelease` also configures the optional local FFmpeg
+          # development module, which intentionally requires external
+          # FFMPEG_SOURCE_DIR/FFMPEG_BUILD_DIR trees and is not part of the
+          # standard packaged player path.
+          ./gradlew --no-daemon :app:assembleFullRelease
 
       - name: Locate universal APK
         id: apk
         shell: bash
         run: |
           set -euo pipefail
-          apk_path=$(find source/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)
+          apk_path=$(find source/app/build/outputs/apk/full/release -maxdepth 1 -type f -name '*universal*.apk' | head -n 1)
           [[ -n "$apk_path" && -f "$apk_path" ]] || {
-            echo "::error::Release APK not found"
+            echo "::error::Universal full release APK not found"
             exit 1
           }
           echo "path=$apk_path" >> "$GITHUB_OUTPUT"
@@ -314,7 +319,7 @@ jobs:
           name: ${{ env.ARTIFACT_NAME }}
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
 
       - name: Upload source audit
         if: always()
