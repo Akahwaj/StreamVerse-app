@@ -347,6 +347,80 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Final end-to-end StreamVerse verification
+        shell: bash
+        env:
+          APK_PATH: ${{ steps.apk.outputs.path }}
+        run: |
+          set -euo pipefail
+
+          [[ -s "$APK_PATH" ]] || {
+            echo "::error::Final APK is missing or empty"
+            exit 1
+          }
+
+          unzip -tqq "$APK_PATH" || {
+            echo "::error::Final APK ZIP integrity check failed"
+            exit 1
+          }
+
+          badging=$(aapt dump badging "$APK_PATH")
+          package_line=$(printf '%s\n' "$badging" | grep -m1 '^package:')
+
+          printf '%s\n' "$package_line" | grep -Fq "name='$EXPECTED_PACKAGE'" || {
+            echo "::error::Final package mismatch; expected $EXPECTED_PACKAGE"
+            exit 1
+          }
+          printf '%s\n' "$package_line" | grep -Fq "versionCode='$STREAMVERSE_VERSION_CODE'" || {
+            echo "::error::Final APK versionCode does not match $STREAMVERSE_VERSION_CODE"
+            exit 1
+          }
+          printf '%s\n' "$package_line" | grep -Fq "versionName='$STREAMVERSE_VERSION_NAME'" || {
+            echo "::error::Final APK versionName does not match $STREAMVERSE_VERSION_NAME"
+            exit 1
+          }
+
+          launchable=$(printf '%s\n' "$badging" | grep -m1 '^launchable-activity:' || true)
+          [[ -n "$launchable" ]] || {
+            echo "::error::APK has no launchable activity; Fire TV would not be able to start StreamVerse"
+            exit 1
+          }
+
+          for abi in $EXPECTED_ABIS; do
+            unzip -Z1 "$APK_PATH" | grep -q "^lib/$abi/" || {
+              echo "::error::Final APK is missing native libraries for $abi"
+              exit 1
+            }
+          done
+
+          [[ -s "$GITHUB_WORKSPACE/streamverse-source-audit.txt" ]] || {
+            echo "::error::Source audit report is missing or empty"
+            exit 1
+          }
+          ! grep -q '^FAIL:' "$GITHUB_WORKSPACE/streamverse-source-audit.txt" || {
+            echo "::error::Source audit report contains failures"
+            exit 1
+          }
+
+          bash orchestrator/scripts/test-streamverse-contracts.sh source
+
+          sha256=$(sha256sum "$APK_PATH" | awk '{print $1}')
+          size_bytes=$(stat -c %s "$APK_PATH")
+          {
+            echo "### StreamVerse final verification ✅"
+            echo "- Package: \`$EXPECTED_PACKAGE\`"
+            echo "- Version: \`$STREAMVERSE_VERSION_NAME\` (\`$STREAMVERSE_VERSION_CODE\`)"
+            echo "- Launchable activity: verified"
+            echo "- ABIs: \`$EXPECTED_ABIS\`"
+            echo "- APK bytes: \`$size_bytes\`"
+            echo "- SHA-256: \`$sha256\`"
+            echo "- Source audit: passed"
+            echo "- Mandatory contracts: passed again after packaging"
+            echo "- APK artifact upload step: completed before this gate"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "Final StreamVerse verification passed."
+
       - name: Upload source audit
         if: always()
         uses: actions/upload-artifact@v4
