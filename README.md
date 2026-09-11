@@ -1,67 +1,153 @@
-# StreamVerse
+# StreamVerse Android / Fire TV
 
-StreamVerse is a personal Android TV and Fire TV media hub with a cinematic, remote-first layout. It is built as a GPLv3 modification of [NuvioTV](https://github.com/NuvioMedia/NuvioTV).
+This repository is the public build and orchestration layer for StreamVerse on Android TV and Fire TV. It applies the StreamVerse patch set to a pinned NuvioTV revision, runs source and contract validation, builds a universal ARM APK, and performs final packaged-APK verification before a workflow can finish successfully.
 
-## Project links
+StreamVerse is designed as a remote-first media client with no required account sign-in for basic use.
 
-- [NuvioTV upstream source](https://github.com/NuvioMedia/NuvioTV)
-- [Nuvio official website](https://nuvio.tv/)
-- [Stremio Community Add-ons directory](https://stremio-addons.net/)
-- [Stremio add-on installation guide](https://stremio.zendesk.com/hc/en-us/articles/360021348391-How-to-install-uninstall-Add-ons)
+## Current shared feature set
 
-## UI gallery
+The shared build includes:
 
-![StreamVerse UI gallery](docs/screenshots/streamverse-ui-gallery.png)
+- StreamVerse branding and remote-first TV navigation
+- Movies, TV, Anime, custom catalogs, and metadata-driven discovery
+- Stremio-compatible community add-ons
+- configurable-provider setup instead of installing empty generic manifests
+- TMDB metadata and catalog integration
+- IMDb/MDBList rating integrations
+- Trakt and Simkl tracking/scrobbling support
+- Live TV support
+- built-in playback plus optional external-player handoff
+- duplicate-source suppression and debrid/direct-aware source ordering
+- playback diagnostics and stall monitoring
+- Community Add-ons as a first-class navigation destination
+- provider/debrid settings
+- Adult add-on gate with PIN/session controls
+- restart/settings improvements
+- Fire TV compatible ARM packaging for `armeabi-v7a` and `arm64-v8a`
 
-| Home | Live TV |
-| --- | --- |
-| ![StreamVerse cinematic home screen](docs/screenshots/01-home.png) | ![StreamVerse Live TV guide](docs/screenshots/02-live-tv.png) |
-| **Community Add-ons** | **Connected Services** |
-| ![StreamVerse community add-on directory](docs/screenshots/03-community-addons.png) | ![StreamVerse debrid, Usenet, metadata and tracking services](docs/screenshots/04-connected-services.png) |
-| **Settings** | **Built-in player** |
-| ![StreamVerse settings with restart action](docs/screenshots/05-settings.png) | ![StreamVerse built-in player](docs/screenshots/06-built-in-player.png) |
+## Public privacy boundary
 
-These deterministic layout previews document the TV-safe navigation and feature placement. Catalog artwork, installed add-ons, connected-account status, and channel data vary by device and personal configuration. Regenerate them with `python3 scripts/generate-ui-previews.py`.
+This public repository must not contain a user's personal manifest URLs, provider tokens, private AIOStreams configuration, or private bootstrap data.
 
-[Download the complete UI screenshot pack](docs/StreamVerse-UI-Screenshots.zip)
+Public builds contain only the shared StreamVerse feature set and public/community defaults. Personal configuration is applied separately by a private caller workflow and is never required for this repository to build.
 
-## Highlights
+The mandatory contract tests include public-build checks that reject known personal bootstrap markers if they appear in the public patched source.
 
-- Dark cinematic home screen with featured artwork and D-pad focus states
-- Poster rows for Movies, TV Shows, Anime, Continue Watching, and custom collections
-- Stremio-compatible add-on support
-- User-installable community manifests and compatible open-source GitHub plugin repositories
-- Approved AIOMetadata demo manifest preloaded as an enabled, editable default; additional manifest URLs remain fully user-managed
-- An attributed, searchable Stremio Addons community directory in the phone-accessible Fire TV manager, including configurable catalog add-ons such as Streaming Catalogs
-- Configuration-required aggregators such as AIOStreams are routed through their setup page; StreamVerse accepts the resulting private manifest without exposing it in the repository
-- TMDB movie/TV discovery, lists, collections, artwork, companies, and network catalogs
-- IMDb IDs and ratings, with MDBList aggregation for IMDb, TMDB, Rotten Tomatoes, Metacritic, Letterboxd, Trakt, and MyAnimeList ratings
-- Trakt and Simkl account tracking, library/history synchronization, public lists, and playback scrobbling
-- Add, reorder, rename, hide, or remove catalog rows from the TV app
-- HLS/M3U live-stream playback and Android TV EPG integration
-- Phone-accessible web tools for add-ons, repositories, stream badges, and debrid formatting
-- GitHub Release update checks and guided APK installation
-- Optional external-player handoff where a device has a compatible player installed
-- No required account sign-in for a new Fire TV install
+## Build pipeline
 
-## Build
+The main workflow is `.github/workflows/build-streamverse.yml`.
 
-GitHub Actions fetches a pinned GPLv3 upstream source revision, applies the StreamVerse patch, audits the native UI, embedded web tools, TMDB/IMDb/MDBList catalogs and ratings, Trakt/Simkl tracking, HLS/M3U playback, EPG declarations, and updater modules, then builds and verifies one universal ARM Fire TV APK containing `armeabi-v7a` and `arm64-v8a` native support.
+It:
 
-Release-critical StreamVerse catalog, add-on, tracking, and playback contract tests are blocking. The complete pinned-upstream unit-test suite also runs and its report is always uploaded; known upstream failures remain visible as advisory results instead of being hidden or preventing exact APK inspection.
+1. checks out this orchestration repository
+2. checks out the pinned Android TV upstream source
+3. applies the StreamVerse patch set
+4. optionally applies a caller-provided private overlay
+5. optionally changes the package ID for isolated clean-install testing
+6. stamps build/version information
+7. audits the patched source
+8. runs mandatory StreamVerse contract tests
+9. builds `:app:assembleFullRelease`
+10. locates the universal APK
+11. validates package identity, size, and ARM ABIs
+12. uploads the APK artifact
+13. runs the final end-to-end verification gate
 
-Regular branch and pull-request builds are CI-signed test artifacts. A `vX.Y.Z` tag requires the repository's stable StreamVerse signing secrets, publishes one verified APK to GitHub Releases, and supplies the release used by the in-app updater. The signing key must remain identical across releases or Android will reject the update.
+A Gradle success by itself is not treated as a verified APK.
 
-The embedded web tools are part of the Fire TV app. A standalone iPhone/PWA client and a complete XMLTV/Xtream channel-library manager are separate deliverables and are not claimed by this build.
+## Final verification gate
 
-See [Actions](https://github.com/Akahwaj/StreamVerse-app/actions) for build progress and APK artifacts.
+The final workflow gate rechecks the packaged APK after the artifact step and fails the run if any required condition is missing.
 
-## Privacy and setup
+It verifies:
 
-Your add-on URLs, playlists, provider credentials, and API keys are personal configuration. They are not committed to this public repository. Add them on your own device or through the companion transfer flow. Ratings from Rotten Tomatoes and the other MDBList providers use the user's authorized MDBList API access; StreamVerse does not scrape provider websites.
+- APK exists and is non-empty
+- APK ZIP integrity
+- exact expected Android package ID
+- exact stamped version code and version name
+- a launchable activity is present
+- both required ARM ABI directories are packaged
+- the source audit report exists and contains no failures
+- mandatory StreamVerse contracts still pass after packaging
+- the APK artifact step completed before the final gate
 
-The optional Community Add-ons browser uses the public, read-only [Stremio Addons API](https://docs.stremio-addons.net/developers/api) for personal use and displays the attribution required by that directory. It excludes NSFW listings by default and does not import private or preconfigured manifests.
+The gate also records the final APK size and SHA-256 digest in the GitHub Actions job summary.
 
-## License
+## Clean-install workflow
 
-StreamVerse is distributed under the GNU GPL v3.0. See the upstream project and included notices for attribution and license terms.
+`.github/workflows/clean-install-test.yml` is the clean-room test path.
+
+Each clean-test run uses a unique package ID such as:
+
+```text
+com.akahwaj.streamverse.clean.r<run-number>
+```
+
+That forces Android to create fresh application storage for every clean test. It prevents previously installed add-ons, QR state, provider configuration, tracking state, or DataStore preferences from being mistaken for data bundled in the APK.
+
+Use this workflow when validating first-launch setup behavior.
+
+## QR and configurable-provider expectations
+
+The StreamVerse setup model distinguishes between simple manifest installation and configuration-required services.
+
+A configurable add-on or provider must route the user through its configuration flow and return the configured result to StreamVerse. QR setup should be considered successful only when the resulting configuration is handed back to the app and persisted correctly.
+
+Tracking services such as Trakt and Simkl are expected to complete the full authentication/configuration flow rather than merely exposing a settings screen.
+
+## Build variants
+
+### Public/shared build
+
+Uses the normal package ID:
+
+```text
+com.akahwaj.streamverse
+```
+
+Contains all shared StreamVerse functionality and public/community defaults, but no personal private overlay.
+
+### Personal build
+
+A private workflow in `Akahwaj/StreamVerse` calls this reusable workflow and supplies an additional private patch. The personal APK should have the same shared features as the public build plus personal configuration.
+
+### Clean-install build
+
+Uses a per-run isolated package ID and separate artifact name so it can coexist with the normal app and always starts with a new data sandbox.
+
+## Artifacts
+
+The normal universal ARM artifact is named:
+
+```text
+StreamVerse-Fire-TV-universal-arm
+```
+
+Clean-test artifacts use a run-specific clean-install name.
+
+Do not describe an APK as verified unless its workflow reaches the final end-to-end verification step successfully.
+
+## Repository layout
+
+```text
+.github/workflows/
+  build-streamverse.yml      # reusable/main Android build
+  clean-install-test.yml     # isolated fresh-storage build
+  build-report.yml           # build reporting
+scripts/
+  verify-streamverse-source.sh
+  test-streamverse-contracts.sh
+  verify-fire-tv-apk.sh
+streamverse.patch
+streamverse-*.patch
+```
+
+The patch files are part of the active orchestration model. Standalone duplicate patches that were fully absorbed into active companion patches are intentionally removed instead of being retained as stale copies.
+
+## Upstream and licensing
+
+StreamVerse Android is built as a modification of NuvioTV. Preserve upstream attribution and applicable GPLv3 obligations when distributing modified builds.
+
+## Responsible use
+
+StreamVerse does not grant rights to third-party content. Users are responsible for the add-ons, accounts, playlists, providers, and media they configure and for ensuring they have permission to use them.
