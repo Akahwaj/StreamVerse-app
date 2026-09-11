@@ -1,0 +1,30 @@
+name: Build clean-install StreamVerse APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/clean-install-test.yml"
+      - ".github/workflows/build-streamverse.yml"
+      - "streamverse*.patch"
+      - "scripts/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: streamverse-clean-install-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-clean-apk:
+    uses: ./.github/workflows/build-streamverse.yml
+    with:
+      upstream_repository: NuvioMedia/NuvioTV
+      upstream_ref: b95c899af04189f97284d3c91cb2c478fafc9c04
+      patch_path: streamverse.patch
+      package_id: com.akahwaj.streamverse.clean
+      artifact_name: StreamVerse-Clean-Install-Fire-TV-universal-arm
+    secrets: inherit
