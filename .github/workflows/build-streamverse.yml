@@ -149,9 +149,7 @@ jobs:
               "$patch_dir/streamverse-restart-settings.patch" \
               "$patch_dir/streamverse-community-sidebar.patch" \
               "$patch_dir/streamverse-adult-addons-gate.patch" \
-              "$patch_dir/streamverse-aiometadata-default.patch" \
-              "$patch_dir/streamverse-player-ranking.patch" \
-              "$patch_dir/streamverse-essential-player-choice.patch"; do
+              "$patch_dir/streamverse-aiometadata-default.patch"; do
               [[ -f "$companion" ]] || {
                 echo "::error::Required companion patch not found: ${companion##*/}"
                 exit 1
