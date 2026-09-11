@@ -327,13 +327,15 @@ jobs:
           }
 
           badging=$(aapt dump badging "$APK_PATH")
-          echo "$badging" | grep -q "package: name='$EXPECTED_PACKAGE'" || {
+          printf '%s\n' "$badging" | grep -q "package: name='$EXPECTED_PACKAGE'" || {
             echo "::error::Unexpected package name; expected $EXPECTED_PACKAGE"
             exit 1
           }
 
+          apk_entries="$RUNNER_TEMP/streamverse-apk-entries.txt"
+          unzip -Z1 "$APK_PATH" > "$apk_entries"
           for abi in $EXPECTED_ABIS; do
-            unzip -l "$APK_PATH" | grep -q "lib/$abi/" || {
+            grep -q "^lib/$abi/" "$apk_entries" || {
               echo "::error::Missing expected ABI: $abi"
               exit 1
             }
@@ -386,8 +388,10 @@ jobs:
             exit 1
           }
 
+          apk_entries="$RUNNER_TEMP/streamverse-final-apk-entries.txt"
+          unzip -Z1 "$APK_PATH" > "$apk_entries"
           for abi in $EXPECTED_ABIS; do
-            unzip -Z1 "$APK_PATH" | grep -q "^lib/$abi/" || {
+            grep -q "^lib/$abi/" "$apk_entries" || {
               echo "::error::Final APK is missing native libraries for $abi"
               exit 1
             }
