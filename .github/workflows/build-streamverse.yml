@@ -48,6 +48,16 @@ on:
         required: false
         type: string
         default: ""
+      package_id:
+        description: Optional Android package ID override for isolated clean-install testing
+        required: false
+        type: string
+        default: com.akahwaj.streamverse
+      artifact_name:
+        description: Optional artifact name override
+        required: false
+        type: string
+        default: StreamVerse-Fire-TV-universal-arm
     secrets:
       STREAMVERSE_KEYSTORE_B64:
         required: false
@@ -71,10 +81,10 @@ env:
   PATCH_PATH: ${{ inputs.patch_path || 'streamverse.patch' }}
   EXTRA_PATCH_PATH: ${{ inputs.extra_patch_path || '' }}
   EXPECTED_ABIS: armeabi-v7a arm64-v8a
-  EXPECTED_PACKAGE: com.akahwaj.streamverse
+  EXPECTED_PACKAGE: ${{ inputs.package_id || 'com.akahwaj.streamverse' }}
   MIN_MIB: "40"
   MAX_MIB: "240"
-  ARTIFACT_NAME: StreamVerse-Fire-TV-universal-arm
+  ARTIFACT_NAME: ${{ inputs.artifact_name || 'StreamVerse-Fire-TV-universal-arm' }}
 
 jobs:
   build-validate-package:
@@ -180,6 +190,27 @@ jobs:
             git -C source apply "$extra_patch"
           fi
 
+      - name: Apply isolated package identity
+        if: ${{ env.EXPECTED_PACKAGE != 'com.akahwaj.streamverse' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_PACKAGE" =~ ^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$ ]] || {
+            echo "::error::Invalid Android package ID: $EXPECTED_PACKAGE"
+            exit 1
+          }
+
+          sed -i -E \
+            "s/applicationId = \"com\.akahwaj\.streamverse\"/applicationId = \"$EXPECTED_PACKAGE\"/" \
+            source/app/build.gradle.kts
+
+          grep -Fq "applicationId = \"$EXPECTED_PACKAGE\"" source/app/build.gradle.kts || {
+            echo "::error::Failed to apply isolated package ID"
+            exit 1
+          }
+
+          echo "Using isolated package identity: $EXPECTED_PACKAGE"
+
       - name: Configure version and signing channel
         id: release-config
         shell: bash
@@ -268,11 +299,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Build the app's Full release variant only. A root-level
-          # `assembleRelease` also configures the optional local FFmpeg
-          # development module, which intentionally requires external
-          # FFMPEG_SOURCE_DIR/FFMPEG_BUILD_DIR trees and is not part of the
-          # standard packaged player path.
           ./gradlew --no-daemon :app:assembleFullRelease
 
       - name: Locate universal APK
@@ -302,7 +328,7 @@ jobs:
 
           badging=$(aapt dump badging "$APK_PATH")
           echo "$badging" | grep -q "package: name='$EXPECTED_PACKAGE'" || {
-            echo "::error::Unexpected package name"
+            echo "::error::Unexpected package name; expected $EXPECTED_PACKAGE"
             exit 1
           }
 
