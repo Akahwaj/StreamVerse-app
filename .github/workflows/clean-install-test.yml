@@ -25,6 +25,6 @@ jobs:
       upstream_repository: NuvioMedia/NuvioTV
       upstream_ref: b95c899af04189f97284d3c91cb2c478fafc9c04
       patch_path: streamverse.patch
-      package_id: com.akahwaj.streamverse.clean
-      artifact_name: StreamVerse-Clean-Install-Fire-TV-universal-arm
+      package_id: com.akahwaj.streamverse.clean.r${{ github.run_number }}
+      artifact_name: StreamVerse-Clean-Install-${{ github.run_number }}-Fire-TV-universal-arm
     secrets: inherit
