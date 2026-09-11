@@ -144,9 +144,11 @@ streamverse-*.patch
 
 The patch files are part of the active orchestration model. Standalone duplicate patches that were fully absorbed into active companion patches are intentionally removed instead of being retained as stale copies.
 
-## Third-party streaming disclaimer
+## Third-party streaming and piracy disclaimer
 
 StreamVerse does not host, upload, index, sell, or supply third-party streams or copyrighted media. It is a media client that can connect to user-selected add-ons, manifests, providers, playlists, APIs, tracking services, and external players.
+
+StreamVerse and its maintainers are not responsible for piracy, unauthorized streaming, copyright infringement, redistribution, or other misuse performed through third-party services, add-ons, manifests, playlists, providers, links, or user-supplied configuration.
 
 Third-party services are independently operated and may change, fail, disappear, restrict access, or impose their own terms. A provider, add-on, manifest, service name, configuration option, or external link appearing in StreamVerse does not imply endorsement, ownership, affiliation, or authorization by StreamVerse.
 
