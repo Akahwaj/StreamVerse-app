@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 # Static source gate for the StreamVerse Fire TV distribution.
-# Usage: verify-streamverse-source.sh <patched_android_source>
+# Usage: verify-streamverse-source.sh <patched_android_source> [report_file]
 set -euo pipefail
 
 SOURCE_ROOT="${1:?Patched Android source directory required}"
 REPORT_FILE="${2:-streamverse-source-audit.txt}"
+EXPECTED_PACKAGE="${EXPECTED_PACKAGE:-com.akahwaj.streamverse}"
 FAILED=0
+
+if [[ ! "$EXPECTED_PACKAGE" =~ ^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$ ]]; then
+  echo "::error::Invalid expected Android package ID: $EXPECTED_PACKAGE"
+  exit 1
+fi
 
 : > "$REPORT_FILE"
 
@@ -255,8 +261,13 @@ require_match "app/build.gradle.kts" 'GITHUB_REPO.*StreamVerse-app' "Updater rep
 require_match "app/build.gradle.kts" 'FEATURE_IN_APP_UPDATES_ENABLED.*true' "In-app updates are enabled for the full flavor"
 require_match "app/src/main/AndroidManifest.xml" 'REQUEST_INSTALL_PACKAGES' "APK installer permission is declared"
 
-# StreamVerse identity and launcher contract.
-require_match "app/build.gradle.kts" 'applicationId[[:space:]]*=[[:space:]]*"com\.akahwaj\.streamverse"' "StreamVerse package ID is configured"
+# StreamVerse identity and launcher contract. Production builds require the
+# canonical package; isolated clean-install builds validate their requested ID.
+if grep -Fq "applicationId = \"$EXPECTED_PACKAGE\"" "$SOURCE_ROOT/app/build.gradle.kts"; then
+  pass "StreamVerse package ID is configured ($EXPECTED_PACKAGE)"
+else
+  fail "StreamVerse package ID is configured ($EXPECTED_PACKAGE)"
+fi
 require_match "app/src/main/res/values/strings.xml" '<string name="app_name">StreamVerse</string>' "StreamVerse application label is configured"
 require_match "app/src/main/res/values/strings.xml" '<string name="essential_addon_setup_title">Connect StreamVerse</string>' "Empty add-on recovery is branded and actionable"
 require_match "app/src/main/AndroidManifest.xml" 'android\.intent\.category\.LEANBACK_LAUNCHER' "Leanback launcher category is declared"
