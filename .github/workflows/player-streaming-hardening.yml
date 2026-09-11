@@ -1,0 +1,154 @@
+name: StreamVerse player and streaming hardening gate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "streamverse*.patch"
+      - "scripts/**"
+      - ".github/workflows/player-streaming-hardening.yml"
+      - ".github/workflows/build-streamverse.yml"
+  push:
+    branches: [player-streaming-hardening]
+    paths:
+      - "streamverse*.patch"
+      - "scripts/**"
+      - ".github/workflows/player-streaming-hardening.yml"
+      - ".github/workflows/build-streamverse.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: streamverse-player-streaming-hardening-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UPSTREAM_REPOSITORY: NuvioMedia/NuvioTV
+  UPSTREAM_REF: b95c899af04189f97284d3c91cb2c478fafc9c04
+
+jobs:
+  targeted-contract-scan:
+    name: Player, stream selection, failover, and data-lifecycle contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out StreamVerse orchestration branch
+        uses: actions/checkout@v4
+        with:
+          path: orchestrator
+
+      - name: Check out pinned Android TV source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.UPSTREAM_REPOSITORY }}
+          ref: ${{ env.UPSTREAM_REF }}
+          path: source
+          fetch-depth: 1
+
+      - name: Apply exact StreamVerse patch stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          patches=(
+            streamverse.patch
+            streamverse-branding-core.patch
+            streamverse-branding-tv.patch
+            streamverse-premiumize-api-key.patch
+            streamverse-community-live-tv.patch
+            streamverse-restart-settings.patch
+            streamverse-community-sidebar.patch
+            streamverse-adult-addons-gate.patch
+            streamverse-aiometadata-default.patch
+          )
+          for patch_name in "${patches[@]}"; do
+            patch_file="$GITHUB_WORKSPACE/orchestrator/$patch_name"
+            [[ -f "$patch_file" ]] || { echo "::error::Missing patch: $patch_name"; exit 1; }
+            echo "Applying $patch_name"
+            git -C source apply --check "$patch_file"
+            git -C source apply "$patch_file"
+          done
+
+      - name: Run existing StreamVerse playback contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash orchestrator/scripts/test-streamverse-contracts.sh source
+
+      - name: Run targeted player and streaming hardening contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash orchestrator/scripts/test-player-streaming-hardening.sh source
+
+      - name: Verify fresh-install backup policy is explicit
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest=source/app/src/main/AndroidManifest.xml
+          grep -Fq 'android:allowBackup="false"' "$manifest" || {
+            echo '::error::Automatic Android backup must remain disabled.'
+            exit 1
+          }
+          grep -Fq 'android:dataExtractionRules="@xml/data_extraction_rules"' "$manifest" || {
+            echo '::error::Android 12+ device/cloud transfer rules are missing.'
+            exit 1
+          }
+          grep -Fq 'android:fullBackupContent="@xml/backup_rules"' "$manifest" || {
+            echo '::error::Legacy Android backup exclusion rules are missing.'
+            exit 1
+          }
+          echo 'PASS: uninstall/reinstall cannot rely on Android automatic restore; only explicit StreamVerse backup/restore is allowed.'
+
+      - name: Write exact acceptance target
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## StreamVerse targeted player/streaming acceptance'
+            echo ''
+            echo 'Required before this lane can go green:'
+            echo '- Existing direct-debrid/direct-URL/cached/quality ranking preserved'
+            echo '- Codec and decoder compatibility ranking'
+            echo '- Device capability-aware ranking'
+            echo '- File-size-aware ranking'
+            echo '- Bitrate/bandwidth-aware ranking'
+            echo '- Source health preflight before playback'
+            echo '- Recent-failure suppression with cooldown'
+            echo '- Automatic failover to the next ranked source on error/stall'
+            echo '- Stall watchdog and playback diagnostics wired into the internal player'
+            echo '- External-player fallback preserved'
+            echo '- Android automatic/cloud/device-transfer restore disabled'
+            echo '- Deleting StreamVerse leaves no automatically restorable app state'
+            echo '- Manual encrypted, versioned Backup/Restore is the only persistence escape hatch'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  fire-tv-build:
+    name: Full Fire TV APK build and packaged verification
+    uses: Akahwaj/StreamVerse-app/.github/workflows/build-streamverse.yml@player-streaming-hardening
+    with:
+      upstream_repository: NuvioMedia/NuvioTV
+      upstream_ref: b95c899af04189f97284d3c91cb2c478fafc9c04
+      patch_path: streamverse.patch
+    secrets: inherit
+
+  final-gate:
+    name: Player/streaming release acceptance
+    if: always()
+    needs: [targeted-contract-scan, fire-tv-build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require both targeted behavior and packaged APK lanes
+        env:
+          CONTRACTS: ${{ needs.targeted-contract-scan.result }}
+          APK: ${{ needs.fire-tv-build.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'targeted-contract-scan=%s\nfire-tv-build=%s\n' "$CONTRACTS" "$APK"
+          [[ "$CONTRACTS" == success && "$APK" == success ]] || {
+            echo '::error::StreamVerse player/streaming hardening gate is not release-ready.'
+            exit 1
+          }
+          echo 'StreamVerse player/streaming hardening gate passed.'
