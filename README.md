@@ -144,6 +144,14 @@ streamverse-*.patch
 
 The patch files are part of the active orchestration model. Standalone duplicate patches that were fully absorbed into active companion patches are intentionally removed instead of being retained as stale copies.
 
+## Third-party streaming disclaimer
+
+StreamVerse does not host, upload, index, sell, or supply third-party streams or copyrighted media. It is a media client that can connect to user-selected add-ons, manifests, providers, playlists, APIs, tracking services, and external players.
+
+Third-party services are independently operated and may change, fail, disappear, restrict access, or impose their own terms. A provider, add-on, manifest, service name, configuration option, or external link appearing in StreamVerse does not imply endorsement, ownership, affiliation, or authorization by StreamVerse.
+
+Users are solely responsible for the services and sources they configure, for complying with applicable laws and third-party terms, and for ensuring they have the rights or permission needed to access or play content.
+
 ## Upstream and licensing
 
 StreamVerse Android is built as a modification of NuvioTV. Preserve upstream attribution and applicable GPLv3 obligations when distributing modified builds.
