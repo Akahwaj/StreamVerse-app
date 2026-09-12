@@ -61,6 +61,7 @@ jobs:
             streamverse-community-sidebar.patch
             streamverse-adult-addons-gate.patch
             streamverse-aiometadata-default.patch
+            streamverse-player-streaming-hardening.patch
           )
           for patch_name in "${patches[@]}"; do
             patch_file="$GITHUB_WORKSPACE/orchestrator/$patch_name"
@@ -131,6 +132,7 @@ jobs:
       upstream_repository: NuvioMedia/NuvioTV
       upstream_ref: b95c899af04189f97284d3c91cb2c478fafc9c04
       patch_path: streamverse.patch
+      extra_patch_path: streamverse-player-streaming-hardening.patch
     secrets: inherit
 
   final-gate:
