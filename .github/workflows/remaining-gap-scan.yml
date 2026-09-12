@@ -1,0 +1,228 @@
+name: StreamVerse remaining gap scan
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [player-streaming-hardening]
+    paths:
+      - "streamverse*.patch"
+      - "scripts/**"
+      - ".github/workflows/remaining-gap-scan.yml"
+      - ".github/workflows/player-streaming-hardening.yml"
+      - ".github/workflows/build-streamverse.yml"
+
+permissions:
+  contents: read
+
+env:
+  UPSTREAM_REPOSITORY: NuvioMedia/NuvioTV
+  UPSTREAM_REF: b95c899af04189f97284d3c91cb2c478fafc9c04
+
+jobs:
+  gap-scan:
+    name: Find remaining hardening gaps
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out StreamVerse-app branch
+        uses: actions/checkout@v4
+        with:
+          path: orchestrator
+
+      - name: Check out pinned Android TV source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.UPSTREAM_REPOSITORY }}
+          ref: ${{ env.UPSTREAM_REF }}
+          path: source
+          fetch-depth: 1
+
+      - name: Initialize gap report
+        shell: bash
+        run: |
+          cat > "$GITHUB_WORKSPACE/gap-report.md" <<'EOF'
+          ## StreamVerse remaining gap scan
+
+          This scan is diagnostic. A red result means at least one release contract is still missing or cannot be validated.
+
+          | Check | Result | Detail |
+          |---|---|---|
+          EOF
+          echo 'GAP_COUNT=0' >> "$GITHUB_ENV"
+
+      - name: Validate base patch stack
+        id: base_patches
+        shell: bash
+        run: |
+          set +e
+          patches=(
+            streamverse.patch
+            streamverse-branding-core.patch
+            streamverse-branding-tv.patch
+            streamverse-premiumize-api-key.patch
+            streamverse-community-live-tv.patch
+            streamverse-restart-settings.patch
+            streamverse-community-sidebar.patch
+            streamverse-adult-addons-gate.patch
+            streamverse-aiometadata-default.patch
+          )
+          failed=0
+          for patch_name in "${patches[@]}"; do
+            patch_file="$GITHUB_WORKSPACE/orchestrator/$patch_name"
+            if [[ ! -f "$patch_file" ]]; then
+              echo "| Base patch: $patch_name | FAIL | Missing file |" >> "$GITHUB_WORKSPACE/gap-report.md"
+              failed=$((failed+1))
+              continue
+            fi
+            output=$(git -C source apply --check "$patch_file" 2>&1)
+            if [[ $? -ne 0 ]]; then
+              detail=$(printf '%s' "$output" | head -1 | sed 's/|/\\|/g')
+              echo "| Base patch: $patch_name | FAIL | $detail |" >> "$GITHUB_WORKSPACE/gap-report.md"
+              failed=$((failed+1))
+            else
+              git -C source apply "$patch_file"
+              echo "| Base patch: $patch_name | PASS | Applies cleanly |" >> "$GITHUB_WORKSPACE/gap-report.md"
+            fi
+          done
+          echo "BASE_GAPS=$failed" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Diagnose hardening patch integrity
+        id: hardening_patch
+        shell: bash
+        run: |
+          set +e
+          patch_file="$GITHUB_WORKSPACE/orchestrator/streamverse-player-streaming-hardening.patch"
+          if [[ ! -f "$patch_file" ]]; then
+            echo '| Hardening patch integrity | FAIL | streamverse-player-streaming-hardening.patch is missing |' >> "$GITHUB_WORKSPACE/gap-report.md"
+            echo 'HARDENING_PATCH_OK=false' >> "$GITHUB_ENV"
+            echo 'HARDENING_PATCH_GAPS=1' >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          git -C source apply --check "$patch_file" > "$GITHUB_WORKSPACE/hardening-apply.log" 2>&1
+          rc=$?
+          if [[ $rc -eq 0 ]]; then
+            echo '| Hardening patch integrity | PASS | Patch parses and applies cleanly after the base stack |' >> "$GITHUB_WORKSPACE/gap-report.md"
+            echo 'HARDENING_PATCH_OK=true' >> "$GITHUB_ENV"
+            echo 'HARDENING_PATCH_GAPS=0' >> "$GITHUB_ENV"
+          else
+            detail=$(head -1 "$GITHUB_WORKSPACE/hardening-apply.log" | sed 's/|/\\|/g')
+            echo "| Hardening patch integrity | FAIL | $detail |" >> "$GITHUB_WORKSPACE/gap-report.md"
+            echo 'HARDENING_PATCH_OK=false' >> "$GITHUB_ENV"
+            echo 'HARDENING_PATCH_GAPS=1' >> "$GITHUB_ENV"
+            {
+              echo '### Hardening patch parser output'
+              echo '```text'
+              cat "$GITHUB_WORKSPACE/hardening-apply.log"
+              echo '```'
+            } >> "$GITHUB_WORKSPACE/gap-report.md"
+          fi
+          exit 0
+
+      - name: Scan required hardening contracts in patch source
+        shell: bash
+        run: |
+          set +e
+          patch="$GITHUB_WORKSPACE/orchestrator/streamverse-player-streaming-hardening.patch"
+          gaps=0
+
+          check_marker() {
+            local label="$1"
+            local pattern="$2"
+            if grep -Fq "$pattern" "$patch"; then
+              echo "| $label | PASS | Marker present |" >> "$GITHUB_WORKSPACE/gap-report.md"
+            else
+              echo "| $label | FAIL | Missing: $pattern |" >> "$GITHUB_WORKSPACE/gap-report.md"
+              gaps=$((gaps+1))
+            fi
+          }
+
+          check_marker 'Android 12+ restore exclusion' 'android:dataExtractionRules="@xml/data_extraction_rules"'
+          check_marker 'Legacy restore exclusion' 'android:fullBackupContent="@xml/backup_rules"'
+          check_marker 'Device-to-device exclusion' '<device-transfer>'
+          check_marker 'Cloud backup exclusion' '<cloud-backup'
+          check_marker 'Recent failure memory' 'object StreamFailureHistory'
+          check_marker 'Failed-source suppression' 'StreamFailureHistory.isSuppressed'
+          check_marker 'Playback failure recording' 'StreamFailureHistory.recordFailure'
+          check_marker 'Playback success clearing' 'StreamFailureHistory.recordSuccess'
+          check_marker 'Versioned manual backup' 'SCHEMA_VERSION'
+          check_marker 'Authenticated encryption' 'AES/GCM/NoPadding'
+          check_marker 'Portable passphrase KDF' 'PBKDF2WithHmacSHA256'
+          check_marker 'Manual backup export picker' 'CreateDocument("application/octet-stream")'
+          check_marker 'Manual restore picker' 'OpenDocument()'
+          check_marker 'Backup implementation' 'StreamVerseBackupManager.createBackup'
+          check_marker 'Restore implementation' 'StreamVerseBackupManager.restoreBackup'
+
+          echo "STATIC_GAPS=$gaps" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Run existing contracts on base stack
+        shell: bash
+        run: |
+          set +e
+          if [[ "${BASE_GAPS:-0}" != "0" ]]; then
+            echo '| Existing StreamVerse contracts | BLOCKED | Base patch stack has failures |' >> "$GITHUB_WORKSPACE/gap-report.md"
+            echo 'EXISTING_CONTRACT_GAPS=1' >> "$GITHUB_ENV"
+            exit 0
+          fi
+          bash orchestrator/scripts/test-streamverse-contracts.sh source > "$GITHUB_WORKSPACE/existing-contracts.log" 2>&1
+          rc=$?
+          if [[ $rc -eq 0 ]]; then
+            echo '| Existing StreamVerse contracts | PASS | Baseline behavior preserved |' >> "$GITHUB_WORKSPACE/gap-report.md"
+            echo 'EXISTING_CONTRACT_GAPS=0' >> "$GITHUB_ENV"
+          else
+            detail=$(tail -1 "$GITHUB_WORKSPACE/existing-contracts.log" | sed 's/|/\\|/g')
+            echo "| Existing StreamVerse contracts | FAIL | $detail |" >> "$GITHUB_WORKSPACE/gap-report.md"
+            echo 'EXISTING_CONTRACT_GAPS=1' >> "$GITHUB_ENV"
+          fi
+          exit 0
+
+      - name: Apply hardening patch and run targeted contracts
+        shell: bash
+        run: |
+          set +e
+          if [[ "${HARDENING_PATCH_OK:-false}" != "true" ]]; then
+            echo '| Targeted hardening contracts | BLOCKED | Hardening patch must parse/apply first |' >> "$GITHUB_WORKSPACE/gap-report.md"
+            echo 'TARGETED_GAPS=1' >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          git -C source apply orchestrator/streamverse-player-streaming-hardening.patch
+          if [[ $? -ne 0 ]]; then
+            echo '| Targeted hardening contracts | FAIL | Hardening patch failed during apply |' >> "$GITHUB_WORKSPACE/gap-report.md"
+            echo 'TARGETED_GAPS=1' >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          bash orchestrator/scripts/test-player-streaming-hardening.sh source > "$GITHUB_WORKSPACE/targeted-contracts.log" 2>&1
+          rc=$?
+          if [[ $rc -eq 0 ]]; then
+            echo '| Targeted hardening contracts | PASS | Player, failover, and data-lifecycle contracts passed |' >> "$GITHUB_WORKSPACE/gap-report.md"
+            echo 'TARGETED_GAPS=0' >> "$GITHUB_ENV"
+          else
+            detail=$(tail -1 "$GITHUB_WORKSPACE/targeted-contracts.log" | sed 's/|/\\|/g')
+            echo "| Targeted hardening contracts | FAIL | $detail |" >> "$GITHUB_WORKSPACE/gap-report.md"
+            echo 'TARGETED_GAPS=1' >> "$GITHUB_ENV"
+          fi
+          exit 0
+
+      - name: Publish gap report
+        if: always()
+        shell: bash
+        run: |
+          total=$(( ${BASE_GAPS:-0} + ${HARDENING_PATCH_GAPS:-0} + ${STATIC_GAPS:-0} + ${EXISTING_CONTRACT_GAPS:-0} + ${TARGETED_GAPS:-0} ))
+          {
+            echo ''
+            echo "**Remaining gap count: $total**"
+            if [[ $total -eq 0 ]]; then
+              echo ''
+              echo 'All diagnostic contracts are present and pass. The next gate is the full packaged APK build/verification and then physical Fire TV acceptance.'
+            else
+              echo ''
+              echo 'Fix the FAIL/BLOCKED rows above, then rerun this workflow before the full APK acceptance gate.'
+            fi
+          } >> "$GITHUB_WORKSPACE/gap-report.md"
+          cat "$GITHUB_WORKSPACE/gap-report.md" >> "$GITHUB_STEP_SUMMARY"
+          cat "$GITHUB_WORKSPACE/gap-report.md"
+          [[ $total -eq 0 ]] || exit 1
