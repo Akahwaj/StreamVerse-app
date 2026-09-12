@@ -1,0 +1,407 @@
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -28,7 +28,9 @@
+     <application
+         android:name=".NuvioApplication"
+         android:allowBackup="false"
++        android:fullBackupContent="@xml/backup_rules"
++        android:dataExtractionRules="@xml/data_extraction_rules"
+         android:banner="@mipmap/banner"
+         android:icon="@mipmap/ic_launcher"
+         android:label="@string/app_name"
+
+diff --git a/app/src/main/res/xml/backup_rules.xml b/app/src/main/res/xml/backup_rules.xml
+new file mode 100644
+--- /dev/null
++++ b/app/src/main/res/xml/backup_rules.xml
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="utf-8"?>
++<full-backup-content>
++    <exclude domain="root" path="." />
++</full-backup-content>
+
+diff --git a/app/src/main/res/xml/data_extraction_rules.xml b/app/src/main/res/xml/data_extraction_rules.xml
+new file mode 100644
+--- /dev/null
++++ b/app/src/main/res/xml/data_extraction_rules.xml
+@@ -0,0 +1,9 @@
++<?xml version="1.0" encoding="utf-8"?>
++<data-extraction-rules>
++    <cloud-backup disableIfNoEncryptionCapabilities="true">
++        <exclude domain="root" path="." />
++    </cloud-backup>
++    <device-transfer>
++        <exclude domain="root" path="." />
++    </device-transfer>
++</data-extraction-rules>
+
+diff --git a/app/src/main/java/com/nuvio/tv/core/player/StreamFailureHistory.kt b/app/src/main/java/com/nuvio/tv/core/player/StreamFailureHistory.kt
+new file mode 100644
+--- /dev/null
++++ b/app/src/main/java/com/nuvio/tv/core/player/StreamFailureHistory.kt
+@@ -0,0 +1,54 @@
++package com.nuvio.tv.core.player
++
++import java.util.concurrent.ConcurrentHashMap
++
++/**
++ * Short-lived source quarantine used by automatic source selection.
++ *
++ * A source that fails playback is suppressed for a bounded cooldown so the next
++ * selection/failover does not immediately choose the same broken URL again.
++ * Successful first-frame playback clears the failure entry. The history is
++ * intentionally process-local: uninstall/reinstall and normal process reset do
++ * not create a hidden persistence path.
++ */
++object StreamFailureHistory {
++    private const val FAILURE_COOLDOWN_MS = 10L * 60L * 1000L
++    private const val MAX_ENTRIES = 256
++
++    private val recentFailure = ConcurrentHashMap<String, Long>()
++
++    private fun key(url: String?): String? =
++        url?.trim()?.takeIf { it.isNotEmpty() }?.lowercase()
++
++    fun recordFailure(url: String?, nowMs: Long = System.currentTimeMillis()) {
++        val sourceKey = key(url) ?: return
++        prune(nowMs)
++        if (recentFailure.size >= MAX_ENTRIES && sourceKey !in recentFailure) {
++            recentFailure.entries.minByOrNull { it.value }?.key?.let(recentFailure::remove)
++        }
++        recentFailure[sourceKey] = nowMs
++    }
++
++    fun recordSuccess(url: String?) {
++        key(url)?.let(recentFailure::remove)
++    }
++
++    fun isSuppressed(url: String?, nowMs: Long = System.currentTimeMillis()): Boolean {
++        val sourceKey = key(url) ?: return false
++        val failedAt = recentFailure[sourceKey] ?: return false
++        if (nowMs - failedAt >= FAILURE_COOLDOWN_MS) {
++            recentFailure.remove(sourceKey, failedAt)
++            return false
++        }
++        return true
++    }
++
++    private fun prune(nowMs: Long) {
++        recentFailure.entries.removeIf { nowMs - it.value >= FAILURE_COOLDOWN_MS }
++    }
++}
+
+diff --git a/app/src/main/java/com/nuvio/tv/core/player/StreamAutoPlaySelector.kt b/app/src/main/java/com/nuvio/tv/core/player/StreamAutoPlaySelector.kt
+--- a/app/src/main/java/com/nuvio/tv/core/player/StreamAutoPlaySelector.kt
++++ b/app/src/main/java/com/nuvio/tv/core/player/StreamAutoPlaySelector.kt
+@@ -58,6 +58,7 @@ object StreamAutoPlaySelector {
+     private fun rankCandidateStreams(streams: List<Stream>): List<Stream> =
+         streams.asSequence()
+             .filter(::isPlayable)
++            .filterNot { StreamFailureHistory.isSuppressed(it.getStreamUrl()) }
+             .distinctBy(::streamIdentityKey)
+             .sortedWith(
+                 compareByDescending<Stream> { it.isDirectDebrid() }
+
+diff --git a/app/src/main/java/com/nuvio/tv/ui/screens/player/PlayerRuntimeControllerInitialization.kt b/app/src/main/java/com/nuvio/tv/ui/screens/player/PlayerRuntimeControllerInitialization.kt
+--- a/app/src/main/java/com/nuvio/tv/ui/screens/player/PlayerRuntimeControllerInitialization.kt
++++ b/app/src/main/java/com/nuvio/tv/ui/screens/player/PlayerRuntimeControllerInitialization.kt
+@@ -1293,6 +1293,7 @@ internal fun PlayerRuntimeController.initializePlayer(
+                     override fun onRenderedFirstFrame() {
+                         val isFirstFrame = !hasRenderedFirstFrame  // capture BEFORE flipping
+                         hasRenderedFirstFrame = true
++                        com.nuvio.tv.core.player.StreamFailureHistory.recordSuccess(currentStreamUrl)
+                         mediaSourceFactory.unlockStartupPrefetch()
+                         if (isFirstFrame && _uiState.value.postPlayDismissedForCurrentEpisode) {
+                             _uiState.update { it.copy(postPlayDismissedForCurrentEpisode = false) }
+@@ -1329,6 +1330,7 @@ internal fun PlayerRuntimeController.initializePlayer(
+                         cancelFirstFrameWatchdog()
+                         val detailedError = error.toDisplayMessage(context)
+                         cancelStableProgressReset()
++                        com.nuvio.tv.core.player.StreamFailureHistory.recordFailure(currentStreamUrl)
+ 
+                         // If the codec crashed while the app is in the background (e.g. another
+                         // app reclaimed the hardware decoder), don't run the retry chain. Each
+
+diff --git a/app/src/main/java/com/nuvio/tv/core/backup/StreamVerseBackupManager.kt b/app/src/main/java/com/nuvio/tv/core/backup/StreamVerseBackupManager.kt
+new file mode 100644
+--- /dev/null
++++ b/app/src/main/java/com/nuvio/tv/core/backup/StreamVerseBackupManager.kt
+@@ -0,0 +1,190 @@
++package com.nuvio.tv.core.backup
++
++import android.content.Context
++import java.io.BufferedInputStream
++import java.io.BufferedOutputStream
++import java.io.DataInputStream
++import java.io.DataOutputStream
++import java.io.File
++import java.io.InputStream
++import java.io.OutputStream
++import java.security.SecureRandom
++import java.util.zip.ZipEntry
++import java.util.zip.ZipInputStream
++import java.util.zip.ZipOutputStream
++import javax.crypto.Cipher
++import javax.crypto.CipherInputStream
++import javax.crypto.CipherOutputStream
++import javax.crypto.SecretKeyFactory
++import javax.crypto.spec.GCMParameterSpec
++import javax.crypto.spec.PBEKeySpec
++import javax.crypto.spec.SecretKeySpec
++
++/** User-initiated, portable StreamVerse backup archive. */
++object StreamVerseBackupManager {
++    const val SCHEMA_VERSION = 1
++    private const val PBKDF2_ITERATIONS = 210_000
++    private const val KEY_BITS = 256
++    private val MAGIC = byteArrayOf('S'.code.toByte(), 'V'.code.toByte(), 'B'.code.toByte(), 'K'.code.toByte(), '1'.code.toByte())
++    private val random = SecureRandom()
++
++    fun createBackup(context: Context, output: OutputStream, passphrase: CharArray) {
++        require(passphrase.size >= 6) { "Backup passphrase must contain at least 6 characters" }
++        val salt = ByteArray(16).also(random::nextBytes)
++        val iv = ByteArray(12).also(random::nextBytes)
++        val key = deriveKey(passphrase, salt)
++        val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
++            init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(128, iv))
++        }
++
++        val buffered = BufferedOutputStream(output)
++        DataOutputStream(buffered).apply {
++            write(MAGIC)
++            writeInt(SCHEMA_VERSION)
++            writeInt(salt.size)
++            write(salt)
++            writeInt(iv.size)
++            write(iv)
++            flush()
++        }
++
++        ZipOutputStream(CipherOutputStream(buffered, cipher)).use { zip ->
++            backupRoots(context).forEach { (prefix, root) ->
++                if (root.exists()) addTree(zip, root, prefix, root)
++            }
++            zip.finish()
++        }
++    }
++
++    fun restoreBackup(context: Context, input: InputStream, passphrase: CharArray) {
++        require(passphrase.size >= 6) { "Backup passphrase must contain at least 6 characters" }
++        val buffered = BufferedInputStream(input)
++        val header = DataInputStream(buffered)
++        val magic = ByteArray(MAGIC.size).also(header::readFully)
++        require(magic.contentEquals(MAGIC)) { "Not a StreamVerse backup" }
++        val backupVersion = header.readInt()
++        require(backupVersion in 1..SCHEMA_VERSION) { "Unsupported backup format version: $backupVersion" }
++        val saltSize = header.readInt()
++        require(saltSize in 8..64) { "Invalid backup salt" }
++        val salt = ByteArray(saltSize).also(header::readFully)
++        val ivSize = header.readInt()
++        require(ivSize in 12..16) { "Invalid backup IV" }
++        val iv = ByteArray(ivSize).also(header::readFully)
++
++        val key = deriveKey(passphrase, salt)
++        val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
++            init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
++        }
++
++        ZipInputStream(CipherInputStream(buffered, cipher)).use { zip ->
++            var entry = zip.nextEntry
++            while (entry != null) {
++                if (!entry.isDirectory) restoreEntry(context, zip, entry)
++                zip.closeEntry()
++                entry = zip.nextEntry
++            }
++        }
++    }
++
++    private fun deriveKey(passphrase: CharArray, salt: ByteArray): SecretKeySpec {
++        val spec = PBEKeySpec(passphrase, salt, PBKDF2_ITERATIONS, KEY_BITS)
++        return try {
++            val bytes = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
++            SecretKeySpec(bytes, "AES")
++        } finally {
++            spec.clearPassword()
++        }
++    }
++
++    private fun backupRoots(context: Context): List<Pair<String, File>> {
++        val data = File(context.applicationInfo.dataDir)
++        return listOf(
++            "shared_prefs" to File(data, "shared_prefs"),
++            "databases" to File(data, "databases"),
++            "files" to context.filesDir
++        )
++    }
++
++    private fun addTree(zip: ZipOutputStream, file: File, prefix: String, root: File) {
++        if (file.isDirectory) {
++            file.listFiles()?.sortedBy { it.name }?.forEach { addTree(zip, it, prefix, root) }
++            return
++        }
++        if (!file.isFile) return
++        val relative = file.relativeTo(root).invariantSeparatorsPath
++        if (relative.contains("..")) return
++        zip.putNextEntry(ZipEntry("$prefix/$relative"))
++        file.inputStream().buffered().use { it.copyTo(zip) }
++        zip.closeEntry()
++    }
++
++    private fun restoreEntry(context: Context, zip: ZipInputStream, entry: ZipEntry) {
++        val normalized = entry.name.replace('\\', '/')
++        require(!normalized.startsWith('/') && !normalized.split('/').contains("..")) { "Unsafe backup entry" }
++        val slash = normalized.indexOf('/')
++        require(slash > 0 && slash < normalized.lastIndex) { "Invalid backup entry" }
++        val prefix = normalized.substring(0, slash)
++        val relative = normalized.substring(slash + 1)
++        val data = File(context.applicationInfo.dataDir)
++        val root = when (prefix) {
++            "shared_prefs" -> File(data, "shared_prefs")
++            "databases" -> File(data, "databases")
++            "files" -> context.filesDir
++            else -> throw IllegalArgumentException("Unsupported backup domain")
++        }
++        val target = File(root, relative)
++        val canonicalRoot = root.canonicalFile
++        val canonicalTarget = target.canonicalFile
++        require(canonicalTarget.path.startsWith(canonicalRoot.path + File.separator)) { "Unsafe restore path" }
++        canonicalTarget.parentFile?.mkdirs()
++        val temp = File(canonicalTarget.parentFile, canonicalTarget.name + ".restore.tmp")
++        temp.outputStream().buffered().use { zip.copyTo(it) }
++        if (canonicalTarget.exists() && !canonicalTarget.delete()) {
++            temp.delete()
++            throw IllegalStateException("Unable to replace ${canonicalTarget.name}")
++        }
++        if (!temp.renameTo(canonicalTarget)) {
++            temp.inputStream().use { source -> canonicalTarget.outputStream().use(source::copyTo) }
++            temp.delete()
++        }
++    }
++}
+
+diff --git a/app/src/main/java/com/nuvio/tv/MainActivity.kt b/app/src/main/java/com/nuvio/tv/MainActivity.kt
+--- a/app/src/main/java/com/nuvio/tv/MainActivity.kt
++++ b/app/src/main/java/com/nuvio/tv/MainActivity.kt
+@@ -291,6 +291,93 @@ class MainActivity : ComponentActivity() {
+         externalPlaybackTracker.onActivityResult(result)
+     }
++
++    private var pendingBackupPassphrase: CharArray? = null
++    private var pendingRestorePassphrase: CharArray? = null
++
++    private val streamVerseBackupLauncher = registerForActivityResult(
++        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/octet-stream")
++    ) { uri ->
++        val passphrase = pendingBackupPassphrase
++        pendingBackupPassphrase = null
++        if (uri == null || passphrase == null) {
++            passphrase?.fill('\u0000')
++            return@registerForActivityResult
++        }
++        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
++            val result = runCatching {
++                contentResolver.openOutputStream(uri, "w")?.use { output ->
++                    com.nuvio.tv.core.backup.StreamVerseBackupManager.createBackup(this@MainActivity, output, passphrase)
++                } ?: error("Unable to open backup destination")
++            }
++            passphrase.fill('\u0000')
++            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
++                Toast.makeText(this@MainActivity, result.fold({ "StreamVerse backup saved." }, { "Backup failed: ${it.message}" }), Toast.LENGTH_LONG).show()
++            }
++        }
++    }
++
++    private val streamVerseRestoreLauncher = registerForActivityResult(
++        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
++    ) { uri ->
++        val passphrase = pendingRestorePassphrase
++        pendingRestorePassphrase = null
++        if (uri == null || passphrase == null) {
++            passphrase?.fill('\u0000')
++            return@registerForActivityResult
++        }
++        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
++            val result = runCatching {
++                contentResolver.openInputStream(uri)?.use { input ->
++                    com.nuvio.tv.core.backup.StreamVerseBackupManager.restoreBackup(this@MainActivity, input, passphrase)
++                } ?: error("Unable to open backup file")
++            }
++            passphrase.fill('\u0000')
++            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
++                if (result.isSuccess) {
++                    Toast.makeText(this@MainActivity, "Restore complete. StreamVerse will close; reopen it to load restored data.", Toast.LENGTH_LONG).show()
++                    window.decorView.postDelayed({
++                        finishAffinity()
++                        android.os.Process.killProcess(android.os.Process.myPid())
++                    }, 1200L)
++                } else {
++                    Toast.makeText(this@MainActivity, "Restore failed: ${result.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
++                }
++            }
++        }
++    }
++
++    private fun requestBackupPassphrase(title: String, onAccepted: (CharArray) -> Unit) {
++        val input = android.widget.EditText(this).apply {
++            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
++            hint = "At least 6 characters"
++            isSingleLine = true
++        }
++        android.app.AlertDialog.Builder(this)
++            .setTitle(title)
++            .setMessage("This passphrase encrypts the portable backup. You will need the same passphrase to restore it after reinstalling StreamVerse.")
++            .setView(input)
++            .setPositiveButton("Continue") { _, _ ->
++                val chars = input.text?.toString().orEmpty().toCharArray()
++                if (chars.size < 6) {
++                    chars.fill('\u0000')
++                    Toast.makeText(this, "Passphrase must contain at least 6 characters.", Toast.LENGTH_LONG).show()
++                } else {
++                    onAccepted(chars)
++                }
++            }
++            .setNegativeButton("Cancel", null)
++            .show()
++    }
++
++    fun exportBackup() = requestBackupPassphrase("Backup StreamVerse") { passphrase ->
++        pendingBackupPassphrase = passphrase
++        streamVerseBackupLauncher.launch("StreamVerse-backup-${System.currentTimeMillis()}.svbk")
++    }
++
++    fun importBackup() = requestBackupPassphrase("Restore StreamVerse") { passphrase ->
++        pendingRestorePassphrase = passphrase
++        streamVerseRestoreLauncher.launch(arrayOf("application/octet-stream", "application/zip", "*/*"))
++    }
+ 
+     /** True until the first onResume after onCreate completes. */
+     private var isFirstResumeAfterCreate = false
+
+diff --git a/app/src/main/java/com/nuvio/tv/ui/screens/settings/NetworkSettingsScreen.kt b/app/src/main/java/com/nuvio/tv/ui/screens/settings/NetworkSettingsScreen.kt
+--- a/app/src/main/java/com/nuvio/tv/ui/screens/settings/NetworkSettingsScreen.kt
++++ b/app/src/main/java/com/nuvio/tv/ui/screens/settings/NetworkSettingsScreen.kt
+@@ -422,6 +422,25 @@ fun AdvancedSettingsContent(
+             }
+         }
++
++        item(key = "streamverse_backup_restore") {
++            SettingsGroupCard(
++                modifier = Modifier.fillMaxWidth(),
++                title = "Backup & Restore"
++            ) {
++                SettingsActionRow(
++                    title = "Backup StreamVerse data",
++                    subtitle = "Export an encrypted, versioned backup of add-ons, settings, tracking, history, favorites and other app state.",
++                    onClick = { (context as? com.nuvio.tv.MainActivity)?.exportBackup() }
++                )
++                SettingsActionRow(
++                    title = "Restore StreamVerse data",
++                    subtitle = "Import a backup you previously saved. Automatic Android cloud/device restore stays disabled.",
++                    onClick = { (context as? com.nuvio.tv.MainActivity)?.importBackup() }
++                )
++            }
++        }
+ 
+         item(key = "performance_header") {
+             Text(
